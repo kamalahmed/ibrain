@@ -132,7 +132,3 @@ export function selectBrainScore(state: State): number {
   const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
   return Math.round(avg);
 }
-
-export function selectRecent(state: State, limit = 5): PlayRecord[] {
-  return state.history.slice(0, limit);
-}
