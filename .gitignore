@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+.DS_Store
+*.log
+.vite
+.env
+.env.*
+!.env.example
+coverage
+.vercel
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
