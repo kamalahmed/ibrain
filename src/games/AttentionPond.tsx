@@ -5,6 +5,8 @@ import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
 import { Tutorial, type TutorialStep } from "@/components/Tutorial";
+import { LevelProgress } from "@/components/LevelProgress";
+import { LevelComplete } from "@/components/LevelComplete";
 import { getGame } from "@/lib/games";
 import { haptic } from "@/lib/haptics";
 import { useStore } from "@/store/useStore";
@@ -14,12 +16,14 @@ type Phase =
   | "tutorial"
   | "countdown"
   | "playing"
-  | "roundDone"
+  | "levelDone"
   | "done";
 
 const BOUNDS = { w: 100, h: 100 };
 const BUCKET_REFILL_MS = 2000;
 const PING_LIFE_MS = 600;
+const SESSION_SECONDS = 300;
+const LEVEL_CLEAR_BONUS = 50;
 
 type Fish = {
   id: number;
@@ -49,12 +53,19 @@ type Ping = {
   born: number;
 };
 
-const ROUNDS: { count: number; seconds: number }[] = [
-  { count: 3, seconds: 30 },
-  { count: 4, seconds: 35 },
-  { count: 5, seconds: 40 },
-  { count: 6, seconds: 45 },
-  { count: 7, seconds: 50 },
+type Level = {
+  id: 1 | 2 | 3 | 4 | 5;
+  name: string;
+  count: number;
+  seconds: number;
+};
+
+const LEVELS: Level[] = [
+  { id: 1, name: "3 fish", count: 3, seconds: 30 },
+  { id: 2, name: "4 fish", count: 4, seconds: 35 },
+  { id: 3, name: "5 fish", count: 5, seconds: 40 },
+  { id: 4, name: "6 fish", count: 6, seconds: 45 },
+  { id: 5, name: "7 fish", count: 7, seconds: 50 },
 ];
 
 function spawnFish(count: number): Fish[] {
@@ -111,10 +122,11 @@ export default function AttentionPond() {
   const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
-  const [roundIdx, setRoundIdx] = useState(0);
+  const [levelIdx, setLevelIdx] = useState(0);
   const [fish, setFish] = useState<Fish[]>([]);
   const [lilies, setLilies] = useState<LilyPad[]>([]);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [levelTimeLeft, setLevelTimeLeft] = useState(0);
+  const [sessionTimeLeft, setSessionTimeLeft] = useState(SESSION_SECONDS);
   const [score, setScore] = useState(0);
   const [doubles, setDoubles] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
@@ -123,16 +135,23 @@ export default function AttentionPond() {
   const [bucketReady, setBucketReady] = useState(true);
   const [bucketProgress, setBucketProgress] = useState(1); // 0 refilling → 1 full
   const [bucketShake, setBucketShake] = useState(0);
+  const [lastCleared, setLastCleared] = useState(0);
+  const [lastLevelScore, setLastLevelScore] = useState(0);
 
   const fishRef = useRef<Fish[]>([]);
   const scoreRef = useRef(0);
+  const levelPointsRef = useRef(0);
+  const clearedRef = useRef(0);
   const bucketReadyRef = useRef(true);
   const bucketDeadlineRef = useRef(0);
   const pingsRef = useRef<Ping[]>([]);
   const pingIdRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
-  const deadlineRef = useRef(0);
+  const deadlineRef = useRef(0); // per-level deadline (performance.now base)
+  const sessionDeadlineRef = useRef(0); // session deadline (Date.now base)
+  const sessionTickRef = useRef<number | null>(null);
+  const endedRef = useRef(false);
 
   const stopLoop = () => {
     if (rafRef.current !== null) {
@@ -141,50 +160,85 @@ export default function AttentionPond() {
     }
   };
 
-  const finishGame = useCallback(() => {
-    stopLoop();
-    const { isBest: best } = recordPlay("pond", scoreRef.current);
-    setFinalScore(scoreRef.current);
-    setIsBest(best);
-    setPhase("done");
-  }, [recordPlay]);
+  const stopSessionTick = () => {
+    if (sessionTickRef.current !== null) {
+      window.clearInterval(sessionTickRef.current);
+      sessionTickRef.current = null;
+    }
+  };
 
-  const advanceRound = useCallback(
-    (cause: "cleared" | "timeout") => {
-      if (cause === "cleared") {
-        const remainingMs = Math.max(0, deadlineRef.current - performance.now());
-        const bonus = Math.round((remainingMs / 1000) * 10);
-        scoreRef.current += bonus;
-        setScore(scoreRef.current);
+  const finishGame = useCallback(
+    (clearedAll: boolean) => {
+      if (endedRef.current) return;
+      endedRef.current = true;
+      stopLoop();
+      stopSessionTick();
+      let final = scoreRef.current;
+      if (clearedAll) {
+        const remaining = Math.max(
+          0,
+          Math.floor((sessionDeadlineRef.current - Date.now()) / 1000)
+        );
+        final += remaining;
       }
-      const next = roundIdx + 1;
-      setPhase("roundDone");
-      if (next >= ROUNDS.length) {
-        window.setTimeout(() => finishGame(), 800);
+      scoreRef.current = final;
+      setScore(final);
+      const { isBest: best } = recordPlay("pond", final);
+      setFinalScore(final);
+      setIsBest(best);
+      setPhase("done");
+    },
+    [recordPlay]
+  );
+
+  const advanceLevel = useCallback(
+    (cause: "cleared" | "timeout") => {
+      stopLoop();
+      if (cause === "timeout") {
+        // level failed — session ends with accumulated score
+        finishGame(false);
+        return;
+      }
+      // level cleared — speed bonus based on remaining level time
+      const remainingMs = Math.max(0, deadlineRef.current - performance.now());
+      const speedBonus = Math.round((remainingMs / 1000) * 10);
+      const clearPts = LEVEL_CLEAR_BONUS + speedBonus;
+      scoreRef.current += clearPts;
+      levelPointsRef.current += clearPts;
+      setScore(scoreRef.current);
+      clearedRef.current += 1;
+      const lvl = LEVELS[levelIdx];
+      setLastCleared(lvl.id);
+      setLastLevelScore(levelPointsRef.current);
+      const nextIdx = levelIdx + 1;
+      setPhase("levelDone");
+      if (nextIdx >= LEVELS.length) {
+        window.setTimeout(() => finishGame(true), 1100);
       } else {
-        window.setTimeout(() => startRound(next), 900);
+        window.setTimeout(() => startLevel(nextIdx), 1100);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [finishGame, roundIdx]
+    [finishGame, levelIdx]
   );
 
-  const startRound = useCallback((idx: number) => {
-    const cfg = ROUNDS[idx];
-    const f = spawnFish(cfg.count);
-    const pads = spawnLilies(idx); // 0, 1, 2, 3, 4 per round
+  const startLevel = useCallback((idx: number) => {
+    const lvl = LEVELS[idx];
+    const f = spawnFish(lvl.count);
+    const pads = spawnLilies(idx); // 0, 1, 2, 3, 4 per level
     setFish(f);
     setLilies(pads);
     fishRef.current = f;
-    setTimeLeft(cfg.seconds);
-    deadlineRef.current = performance.now() + cfg.seconds * 1000;
+    levelPointsRef.current = 0;
+    setLevelTimeLeft(lvl.seconds);
+    deadlineRef.current = performance.now() + lvl.seconds * 1000;
     lastTickRef.current = performance.now();
     bucketReadyRef.current = true;
     setBucketReady(true);
     setBucketProgress(1);
     pingsRef.current = [];
     setPings([]);
-    setRoundIdx(idx);
+    setLevelIdx(idx);
     setPhase("playing");
   }, []);
 
@@ -253,12 +307,12 @@ export default function AttentionPond() {
         setPings(trimmed);
       }
 
-      // --- timer ---
+      // --- per-level timer ---
       const remainingMs = deadlineRef.current - now;
-      setTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+      setLevelTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
       if (remainingMs <= 0) {
         stopLoop();
-        advanceRound("timeout");
+        advanceLevel("timeout");
         return;
       }
 
@@ -267,7 +321,7 @@ export default function AttentionPond() {
 
     rafRef.current = requestAnimationFrame(loop);
     return () => stopLoop();
-  }, [phase, advanceRound]);
+  }, [phase, advanceLevel]);
 
   const addPing = (x: number, y: number, text: string, color: "ok" | "bad") => {
     const ping: Ping = {
@@ -304,6 +358,7 @@ export default function AttentionPond() {
       haptic.error();
       setDoubles((d) => d + 1);
       scoreRef.current = Math.max(0, scoreRef.current - 50);
+      levelPointsRef.current -= 50;
       setScore(scoreRef.current);
       addPing(hit.x, hit.y, "-50", "bad");
       return;
@@ -311,6 +366,7 @@ export default function AttentionPond() {
 
     haptic.success();
     scoreRef.current += 100;
+    levelPointsRef.current += 100;
     setScore(scoreRef.current);
     addPing(hit.x, hit.y, "+100", "ok");
 
@@ -320,7 +376,7 @@ export default function AttentionPond() {
     fishRef.current = next;
     setFish(next);
     if (next.every((f) => f.fed)) {
-      advanceRound("cleared");
+      advanceLevel("cleared");
     }
   };
 
@@ -328,7 +384,11 @@ export default function AttentionPond() {
     scoreRef.current = 0;
     setScore(0);
     setDoubles(0);
-    setRoundIdx(0);
+    setLevelIdx(0);
+    clearedRef.current = 0;
+    levelPointsRef.current = 0;
+    endedRef.current = false;
+    setSessionTimeLeft(SESSION_SECONDS);
     setPhase(tutorialSeen ? "countdown" : "tutorial");
   };
 
@@ -336,7 +396,23 @@ export default function AttentionPond() {
     markTutorialSeen(game.id);
     setPhase("countdown");
   };
-  const afterCountdown = () => startRound(0);
+  const afterCountdown = () => {
+    // kick off session timer
+    sessionDeadlineRef.current = Date.now() + SESSION_SECONDS * 1000;
+    setSessionTimeLeft(SESSION_SECONDS);
+    stopSessionTick();
+    sessionTickRef.current = window.setInterval(() => {
+      const left = Math.max(
+        0,
+        Math.ceil((sessionDeadlineRef.current - Date.now()) / 1000)
+      );
+      setSessionTimeLeft(left);
+      if (left <= 0) finishGame(false);
+    }, 250);
+    startLevel(0);
+  };
+
+  useEffect(() => () => stopSessionTick(), []);
 
   const tutorialSteps: TutorialStep[] = [
     {
@@ -365,9 +441,10 @@ export default function AttentionPond() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          A divided-attention drill. Fish swim around the pond — tap each one
-          exactly once. Fed fish look the same as the rest, so you have to
-          remember. Double-taps cost points.
+          Five ponds in one 5-minute session. Level 1 has 3 fish; by level 5
+          there are 7 fish under 4 lily pads. Tap each fish exactly once —
+          fed fish still look identical, so you have to remember. Clear each
+          pond (all fish fed) to unlock the next.
         </Instructions>
       )}
 
@@ -377,41 +454,72 @@ export default function AttentionPond() {
 
       {phase === "countdown" && <Countdown onDone={afterCountdown} />}
 
-      {(phase === "playing" || phase === "roundDone") && (
+      {(phase === "playing" || phase === "levelDone") && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="chip">
-              Pond {roundIdx + 1} / {ROUNDS.length}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <LevelProgress
+              total={LEVELS.length}
+              current={levelIdx + 1}
+              cleared={clearedRef.current}
+              label="Level"
+            />
+            <div className="flex items-center gap-2">
+              <span className="chip" data-testid="score">
+                {score} pts
+              </span>
+              <span
+                className={
+                  "chip " +
+                  (sessionTimeLeft <= 15
+                    ? "bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-800"
+                    : "")
+                }
+                data-testid="timer"
+              >
+                {formatSessionTime(sessionTimeLeft)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>
+              {LEVELS[levelIdx].name} · fed {fedCount} / {fish.length}
             </span>
-            <span className="chip">Score: {score}</span>
             <span
               className={
-                "chip " +
-                (timeLeft <= 5
-                  ? "bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-800"
-                  : "")
+                levelTimeLeft <= 5
+                  ? "font-bold text-rose-600 dark:text-rose-300"
+                  : ""
               }
+              data-testid="level-timer"
             >
-              {timeLeft}s
+              level {levelTimeLeft}s
             </span>
           </div>
-          <Pond
-            fish={fish}
-            lilies={lilies}
-            pings={pings}
-            onTapFish={tapFish}
-            showOverlay={phase === "roundDone"}
-          />
-          <Bucket
-            ready={bucketReady}
-            progress={bucketProgress}
-            shakeKey={bucketShake}
-          />
-          <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-            {roundIdx + 1 === ROUNDS.length
-              ? "Final pond!"
-              : `Fed: ${fedCount} / ${fish.length}`}
-          </p>
+
+          {phase === "levelDone" ? (
+            <LevelComplete
+              levelJustCleared={lastCleared}
+              totalLevels={LEVELS.length}
+              levelScore={lastLevelScore}
+              nextLabel={LEVELS[lastCleared]?.name}
+            />
+          ) : (
+            <>
+              <Pond
+                fish={fish}
+                lilies={lilies}
+                pings={pings}
+                onTapFish={tapFish}
+                showOverlay={false}
+              />
+              <Bucket
+                ready={bucketReady}
+                progress={bucketProgress}
+                shakeKey={bucketShake}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -421,7 +529,7 @@ export default function AttentionPond() {
           score={finalScore}
           isBest={isBest}
           onPlayAgain={begin}
-          detail={`${doubles} double-tap${doubles === 1 ? "" : "s"}`}
+          detail={`${clearedRef.current} / ${LEVELS.length} levels · ${doubles} double-tap${doubles === 1 ? "" : "s"}`}
         />
       )}
     </GameShell>
@@ -856,4 +964,10 @@ function demoFish(id: number, x: number, y: number, deg: number): Fish {
     rot: rad,
     fed: false,
   };
+}
+
+function formatSessionTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
