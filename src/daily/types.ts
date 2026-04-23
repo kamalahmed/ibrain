@@ -19,4 +19,5 @@ export const DAILY_GAMES: DailyGameSlot[] = [
   { id: "memory", label: "Memory", emoji: "🧩", estimatedSeconds: 60 },
   { id: "nback", label: "N-Back", emoji: "🧠", estimatedSeconds: 30 },
   { id: "pond", label: "Pond", emoji: "🐟", estimatedSeconds: 30 },
+  { id: "stroop", label: "Stroop", emoji: "🎨", estimatedSeconds: 30 },
 ];

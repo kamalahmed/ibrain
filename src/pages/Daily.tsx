@@ -10,6 +10,7 @@ import { SchulteMini } from "@/daily/SchulteMini";
 import { MemoryMini } from "@/daily/MemoryMini";
 import { NBackMini } from "@/daily/NBackMini";
 import { PondMini } from "@/daily/PondMini";
+import { StroopMini } from "@/daily/StroopMini";
 import { todayKey } from "@/lib/date";
 
 type Phase = "intro" | "transition" | "playing" | "done";
@@ -251,6 +252,7 @@ export default function Daily() {
                 {currentSlot.id === "memory" && <MemoryMini onComplete={onMiniComplete} />}
                 {currentSlot.id === "nback" && <NBackMini onComplete={onMiniComplete} />}
                 {currentSlot.id === "pond" && <PondMini onComplete={onMiniComplete} />}
+                {currentSlot.id === "stroop" && <StroopMini onComplete={onMiniComplete} />}
               </motion.div>
             )}
           </AnimatePresence>
