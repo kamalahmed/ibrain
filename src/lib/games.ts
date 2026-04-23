@@ -59,9 +59,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "math",
     name: "Math Sprint",
-    tagline: "Quick — what's 17 × 4?",
+    tagline: "Five levels. Five minutes. How high can you climb?",
     description:
-      "60 seconds of arithmetic. Type the correct answer as fast as you can. Correct answers add points, wrong answers cost time.",
+      "Five arithmetic levels, one 5-minute timer. Tap the correct answer from four choices on levels 1–4, then type it on level 5. Clear each level to unlock the next. Wrong answers cost time.",
     path: "/play/math",
     emoji: "➗",
     accent: "from-fuchsia-400 to-brand-500",
