@@ -26,12 +26,12 @@ export default function Landing() {
             your browser.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Link to="/dashboard" className="btn-primary">
-              Start training →
+            <Link to="/daily" className="btn-primary">
+              Today's challenge →
             </Link>
-            <a href="#games" className="btn-secondary">
-              See the games
-            </a>
+            <Link to="/dashboard" className="btn-secondary">
+              Browse games
+            </Link>
           </div>
           <dl className="mt-8 grid max-w-md grid-cols-3 gap-4 text-center">
             <Stat label="Games" value="5" />
