@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
+import Daily from "./pages/Daily";
 import NotFound from "./pages/NotFound";
 import ReactionTime from "./games/ReactionTime";
 import MemoryMatch from "./games/MemoryMatch";
@@ -18,6 +19,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/daily" element={<Daily />} />
           <Route path="/play/reaction" element={<ReactionTime />} />
           <Route path="/play/memory" element={<MemoryMatch />} />
           <Route path="/play/nback" element={<NBack />} />
