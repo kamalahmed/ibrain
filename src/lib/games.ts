@@ -47,9 +47,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "nback",
     name: "N-Back",
-    tagline: "Is this letter the same as 2 back?",
+    tagline: "Five levels climbing from 1-back to 3-back.",
     description:
-      "A working-memory classic. A letter appears every 2 seconds — press Match when the current letter is identical to the one 2 steps before.",
+      "A working-memory classic. Five n-back levels in one 5-minute session: 1-back → 2-back → 3-back, faster each time. Press Match (or space) whenever the current letter equals the one N steps before.",
     path: "/play/nback",
     emoji: "🧠",
     accent: "from-indigo-400 to-brand-600",
