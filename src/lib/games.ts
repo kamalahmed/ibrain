@@ -23,14 +23,14 @@ export const GAMES: GameMeta[] = [
   {
     id: "reaction",
     name: "Reaction Time",
-    tagline: "Tap the instant it turns green.",
+    tagline: "Five levels from simple tap to shape discrimination.",
     description:
-      "Measures simple reaction time in milliseconds. Wait for the green signal, then tap as fast as you can. Five trials, lowest average wins.",
+      "Five reflex levels in one 5-minute session. Level 1 is a pure reaction test; later levels add go/no-go and shape discrimination — only tap on a green circle.",
     path: "/play/reaction",
     emoji: "⚡️",
     accent: "from-amber-400 to-pink-500",
-    scoreUnit: "ms",
-    lowerIsBetter: true,
+    scoreUnit: "pts",
+    lowerIsBetter: false,
   },
   {
     id: "memory",
