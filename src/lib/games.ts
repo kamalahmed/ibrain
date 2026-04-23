@@ -71,14 +71,14 @@ export const GAMES: GameMeta[] = [
   {
     id: "schulte",
     name: "Schulte Table",
-    tagline: "1 to 25, in order, as fast as you can.",
+    tagline: "Five grids. 5×5 → 7×7. Colours try to distract.",
     description:
-      "A peripheral-vision and focus drill. A 5×5 grid of shuffled numbers. Tap them in order from 1 to 25 as quickly as possible.",
+      "A peripheral-vision drill. Five grids in one 5-minute session — 5×5, 5×5 coloured, 6×6, 6×6 coloured, then 7×7. Tap the numbers in order; clear each grid to unlock the next. Faster clears = more points.",
     path: "/play/schulte",
     emoji: "🔢",
     accent: "from-emerald-400 to-teal-500",
-    scoreUnit: "s",
-    lowerIsBetter: true,
+    scoreUnit: "pts",
+    lowerIsBetter: false,
   },
   {
     id: "pond",
