@@ -10,6 +10,7 @@ import NBack from "./games/NBack";
 import MathSprint from "./games/MathSprint";
 import SchulteTable from "./games/SchulteTable";
 import AttentionPond from "./games/AttentionPond";
+import Stroop from "./games/Stroop";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/play/math" element={<MathSprint />} />
           <Route path="/play/schulte" element={<SchulteTable />} />
           <Route path="/play/pond" element={<AttentionPond />} />
+          <Route path="/play/stroop" element={<Stroop />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

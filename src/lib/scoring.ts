@@ -30,6 +30,10 @@ export function normalizeScore(id: GameId, raw: number): number {
       // session points, higher is better. 2500 pts ≈ strong run → 100
       return clamp((raw / 2500) * 100);
     }
+    case "stroop": {
+      // session points, higher is better. 5000 pts ≈ strong run → 100
+      return clamp((raw / 5000) * 100);
+    }
   }
 }
 
@@ -46,6 +50,7 @@ export function formatScore(id: GameId, raw: number): string {
     case "nback":
     case "math":
     case "pond":
+    case "stroop":
       return `${Math.round(raw)} pts`;
   }
 }

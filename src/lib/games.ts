@@ -4,7 +4,8 @@ export type GameId =
   | "nback"
   | "math"
   | "schulte"
-  | "pond";
+  | "pond"
+  | "stroop";
 
 export type GameMeta = {
   id: GameId;
@@ -89,6 +90,18 @@ export const GAMES: GameMeta[] = [
     path: "/play/pond",
     emoji: "🐟",
     accent: "from-cyan-400 to-emerald-500",
+    scoreUnit: "pts",
+    lowerIsBetter: false,
+  },
+  {
+    id: "stroop",
+    name: "Stroop Test",
+    tagline: "Five levels. Colour vs. word conflict. One 5-minute timer.",
+    description:
+      "The classic inhibition task. Five Stroop levels in one 5-minute session: colour swatches, plain words, congruent word+ink, the classic incongruent conflict, and a mixed level that flips the rule each trial. Tap one of four colour buttons that matches the prompt.",
+    path: "/play/stroop",
+    emoji: "🎨",
+    accent: "from-violet-500 to-pink-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
   },
