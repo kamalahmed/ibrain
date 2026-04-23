@@ -4,10 +4,11 @@ import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
+import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
-type Phase = "intro" | "countdown" | "playing" | "done";
+type Phase = "intro" | "tutorial" | "countdown" | "playing" | "done";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const N = 2;
@@ -33,6 +34,8 @@ function generateSequence(): string[] {
 export default function NBack() {
   const game = getGame("nback");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [seq, setSeq] = useState<string[]>([]);
@@ -115,8 +118,33 @@ export default function NBack() {
     setHits(0);
     setMisses(0);
     setFalseAlarms(0);
+    setPhase(tutorialSeen ? "countdown" : "tutorial");
+  };
+
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
     setPhase("countdown");
   };
+
+  const tutorialSteps: TutorialStep[] = [
+    {
+      caption: "A letter appears every 2 seconds.",
+      stage: <NBackDemo highlight={[true, false, false]} />,
+    },
+    {
+      caption: `Compare the current letter with the one shown ${N} steps ago.`,
+      stage: <NBackDemo highlight={[true, false, true]} arrow />,
+    },
+    {
+      caption: "If they match, press Match (or the space bar).",
+      stage: <NBackDemo highlight={[true, false, true]} arrow matched />,
+    },
+    {
+      caption:
+        "If they don't match, do nothing — extra presses count as false alarms.",
+      stage: <NBackDemo highlight={[true, true, false]} arrow nonMatch />,
+    },
+  ];
 
   const startPlay = () => {
     setPhase("playing");
@@ -160,6 +188,10 @@ export default function NBack() {
           shown <strong>2 steps back</strong>, press <kbd>Match</kbd> (or the
           space bar). {TOTAL} letters total.
         </Instructions>
+      )}
+
+      {phase === "tutorial" && (
+        <Tutorial steps={tutorialSteps} onDone={afterTutorial} />
       )}
 
       {phase === "countdown" && <Countdown onDone={startPlay} />}
@@ -221,5 +253,56 @@ export default function NBack() {
         />
       )}
     </GameShell>
+  );
+}
+
+function NBackDemo({
+  highlight,
+  arrow,
+  matched,
+  nonMatch,
+}: {
+  highlight: [boolean, boolean, boolean];
+  arrow?: boolean;
+  matched?: boolean;
+  nonMatch?: boolean;
+}) {
+  const letters: [string, string, string] = ["K", "R", "K"];
+  if (nonMatch) letters[2] = "T";
+  return (
+    <div className="mx-auto max-w-sm">
+      <div className="flex items-center justify-center gap-3">
+        {letters.map((l, i) => (
+          <div
+            key={i}
+            className={
+              "grid h-20 w-20 place-items-center rounded-2xl text-4xl font-black transition-all " +
+              (highlight[i]
+                ? "bg-gradient-to-br from-brand-500 to-accent-teal text-white shadow-soft"
+                : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500")
+            }
+          >
+            {l}
+          </div>
+        ))}
+      </div>
+      {arrow && (
+        <div className="mt-3 text-center">
+          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            ← compare 2 back
+          </span>
+        </div>
+      )}
+      {matched && (
+        <p className="mt-3 text-center text-sm font-bold text-emerald-600 dark:text-emerald-400">
+          Same letter → press Match
+        </p>
+      )}
+      {nonMatch && (
+        <p className="mt-3 text-center text-sm font-bold text-slate-500">
+          Different → do nothing
+        </p>
+      )}
+    </div>
   );
 }

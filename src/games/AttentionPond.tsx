@@ -64,6 +64,8 @@ function spawnFish(count: number): Fish[] {
 export default function AttentionPond() {
   const game = getGame("pond");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [roundIdx, setRoundIdx] = useState(0);
@@ -240,10 +242,13 @@ export default function AttentionPond() {
     scoreRef.current = 0;
     setDoubles(0);
     setRoundIdx(0);
-    setPhase("tutorial");
+    setPhase(tutorialSeen ? "countdown" : "tutorial");
   };
 
-  const afterTutorial = () => setPhase("countdown");
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
+    setPhase("countdown");
+  };
   const afterCountdown = () => startRound(0);
 
   const tutorialSteps: TutorialStep[] = [
