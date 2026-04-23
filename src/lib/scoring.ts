@@ -7,9 +7,8 @@ import type { GameId } from "./games";
 export function normalizeScore(id: GameId, raw: number): number {
   switch (id) {
     case "reaction": {
-      // ms, lower is better. 200ms → 100, 600ms → 0
-      const v = 100 - ((raw - 200) / (600 - 200)) * 100;
-      return clamp(v);
+      // session points, higher is better. 2500 pts ≈ strong session → 100
+      return clamp((raw / 2500) * 100);
     }
     case "memory": {
       // points, higher is better. 1000pts → 100
@@ -42,7 +41,7 @@ export function clamp(n: number, min = 0, max = 100): number {
 export function formatScore(id: GameId, raw: number): string {
   switch (id) {
     case "reaction":
-      return `${Math.round(raw)} ms`;
+      return `${Math.round(raw)} pts`;
     case "schulte":
       return `${raw.toFixed(1)} s`;
     case "memory":
