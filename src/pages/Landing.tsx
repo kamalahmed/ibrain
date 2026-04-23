@@ -12,7 +12,7 @@ export default function Landing() {
           transition={{ duration: 0.45 }}
         >
           <span className="chip" aria-hidden>
-            🧠 Train daily · 5 mini-games
+            🧠 Train daily · {GAMES.length} mini-games
           </span>
           <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight text-slate-900 dark:text-white sm:text-5xl">
             Sharpen your mind.{" "}
@@ -34,7 +34,7 @@ export default function Landing() {
             </Link>
           </div>
           <dl className="mt-8 grid max-w-md grid-cols-3 gap-4 text-center">
-            <Stat label="Games" value="5" />
+            <Stat label="Games" value={GAMES.length.toString()} />
             <Stat label="Minutes" value="5" />
             <Stat label="Backend" value="None" />
           </dl>

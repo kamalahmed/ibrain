@@ -411,7 +411,7 @@ function MemoryCard({
     >
       <motion.span
         animate={{ rotateY: showFace ? 180 : 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ type: "spring", stiffness: 480, damping: 26, mass: 0.7 }}
         className="absolute inset-0 grid place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-teal text-xl text-white shadow-soft"
         style={{ backfaceVisibility: "hidden" }}
         aria-hidden
@@ -421,7 +421,7 @@ function MemoryCard({
       <motion.span
         initial={false}
         animate={{ rotateY: showFace ? 0 : -180 }}
-        transition={{ duration: 0.3 }}
+        transition={{ type: "spring", stiffness: 480, damping: 26, mass: 0.7 }}
         className={
           "absolute inset-0 grid place-items-center rounded-xl " +
           faceTextSize +

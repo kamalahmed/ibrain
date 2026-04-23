@@ -2,10 +2,12 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
 import { Sparkline, computeTrendPct } from "@/components/Sparkline";
+import { CountUp } from "@/components/CountUp";
 import { GAMES, type GameId } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import { selectBrainScore, useStore } from "@/store/useStore";
 import { todayKey } from "@/lib/date";
+import { DAILY_GAMES } from "@/daily/types";
 
 export default function Dashboard() {
   const bestScores = useStore((s) => s.bestScores);
@@ -47,19 +49,23 @@ export default function Dashboard() {
       <section aria-label="Your stats" className="grid gap-3 sm:grid-cols-3">
         <StatCard
           label="Brain score"
-          value={String(brainScore)}
+          value={brainScore}
           sub="avg of your bests"
           highlight
+          animate
         />
         <StatCard
           label="Daily streak"
-          value={`${streak}`}
+          value={streak}
           sub={streak === 1 ? "day" : "days"}
+          icon="🔥"
+          flame
         />
         <StatCard
           label="Games played"
-          value={String(totalPlayed)}
+          value={totalPlayed}
           sub="total sessions"
+          animate
         />
       </section>
 
@@ -79,7 +85,7 @@ export default function Dashboard() {
                 {doneToday ? "You trained today ✓" : "Today's training is waiting"}
               </h2>
               <p className="mt-1 max-w-prose text-sm text-white/90">
-                One short run of each of the 6 games, back-to-back. ~5 minutes.
+                One short run of each of the {DAILY_GAMES.length} games, back-to-back. ~5 minutes.
                 Keeps your streak alive.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
@@ -200,11 +206,17 @@ function StatCard({
   value,
   sub,
   highlight,
+  animate,
+  icon,
+  flame,
 }: {
   label: string;
-  value: string;
+  value: number;
   sub?: string;
   highlight?: boolean;
+  animate?: boolean;
+  icon?: string;
+  flame?: boolean;
 }) {
   return (
     <motion.div
@@ -217,21 +229,46 @@ function StatCard({
           : "card"
       }
     >
-      <p
-        className={
-          "text-xs font-semibold uppercase tracking-wide " +
-          (highlight ? "text-white/80" : "text-slate-500 dark:text-slate-400")
-        }
-      >
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={
+            "text-xs font-semibold uppercase tracking-wide " +
+            (highlight ? "text-white/80" : "text-slate-500 dark:text-slate-400")
+          }
+        >
+          {label}
+        </p>
+        {icon && (
+          <motion.span
+            aria-hidden
+            className="text-xl leading-none"
+            initial={flame ? { scale: 0.6, rotate: -8 } : { scale: 1 }}
+            animate={flame ? { scale: 1, rotate: 0 } : { scale: 1 }}
+            transition={{
+              type: "spring",
+              stiffness: 420,
+              damping: 12,
+              delay: 0.15,
+            }}
+          >
+            {icon}
+          </motion.span>
+        )}
+      </div>
       <p
         className={
           "mt-1 text-3xl font-black " +
           (highlight ? "text-white" : "text-slate-900 dark:text-white")
         }
+        data-testid={
+          highlight
+            ? "stat-brain-score"
+            : flame
+            ? "stat-streak"
+            : "stat-games-played"
+        }
       >
-        {value}
+        {animate ? <CountUp value={value} /> : String(value)}
       </p>
       {sub && (
         <p

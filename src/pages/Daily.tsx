@@ -124,7 +124,7 @@ export default function Daily() {
           <p className="mt-2 text-slate-700 dark:text-slate-300">
             {alreadyDoneToday
               ? "You can still practice — the score won't change your streak."
-              : "You'll play a short version of all six games back-to-back. One composite score, one shot for the day's streak."}
+              : `You'll play a short version of all ${DAILY_GAMES.length} games back-to-back. One composite score, one shot for the day's streak.`}
           </p>
 
           {alreadyDoneToday && todayResult && (
