@@ -20,8 +20,8 @@ export function normalizeScore(id: GameId, raw: number): number {
       return clamp((raw / 20) * 100);
     }
     case "math": {
-      // points, higher is better. 30 in a minute → 100
-      return clamp((raw / 30) * 100);
+      // session points, higher is better. 400 pts ≈ cleared 4+ levels → 100
+      return clamp((raw / 400) * 100);
     }
     case "schulte": {
       // seconds, lower is better. 20s → 100, 90s → 0
