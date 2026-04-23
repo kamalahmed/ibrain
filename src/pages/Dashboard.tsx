@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
-import { GAMES } from "@/lib/games";
+import { Sparkline, computeTrendPct } from "@/components/Sparkline";
+import { GAMES, type GameId } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import { selectBrainScore, useStore } from "@/store/useStore";
 import { todayKey } from "@/lib/date";
@@ -15,9 +16,31 @@ export default function Dashboard() {
   const dailyStreak = useStore((s) => s.dailyStreak);
   const bestDaily = useStore((s) => s.bestDaily);
   const lastDailyDate = useStore((s) => s.lastDailyDate);
+  const dailyResults = useStore((s) => s.dailyResults);
   const doneToday = lastDailyDate === todayKey();
   const recent = history.slice(0, 5);
   const totalPlayed = history.length;
+
+  // Per-game chronological history (oldest → newest), last 12 each
+  const perGameHistory: Record<GameId, number[]> = GAMES.reduce(
+    (acc, g) => {
+      acc[g.id] = history
+        .filter((h) => h.game === g.id)
+        .slice(0, 12)
+        .reverse()
+        .map((h) => h.score);
+      return acc;
+    },
+    {} as Record<GameId, number[]>
+  );
+
+  // Daily totals (oldest → newest), last 14, non-practice only
+  const dailyTrend = dailyResults
+    .filter((r) => !r.isPractice)
+    .slice(0, 14)
+    .reverse()
+    .map((r) => r.totalScore);
+  const dailyTrendPct = computeTrendPct(dailyTrend, 5);
 
   return (
     <main className="mx-auto max-w-5xl safe-px pb-16 pt-6">
@@ -59,13 +82,33 @@ export default function Dashboard() {
                 One short run of each of the 6 games, back-to-back. ~5 minutes.
                 Keeps your streak alive.
               </p>
-              <div className="mt-3 flex flex-wrap gap-3 text-sm">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                 <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
                   Streak <strong>{dailyStreak}</strong> {dailyStreak === 1 ? "day" : "days"}
                 </span>
                 <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
                   Best <strong>{bestDaily}</strong> pts
                 </span>
+                {dailyTrend.length >= 1 && (
+                  <span
+                    className="flex items-center gap-2 rounded-xl bg-white/15 px-3 py-1 backdrop-blur"
+                    data-testid="daily-trend"
+                  >
+                    <Sparkline
+                      values={dailyTrend}
+                      width={96}
+                      height={20}
+                      colorClass="text-white"
+                      ariaLabel="daily totals trend"
+                    />
+                    {dailyTrend.length >= 2 && (
+                      <span className="text-[11px] font-bold">
+                        {dailyTrendPct > 0 ? "+" : ""}
+                        {dailyTrendPct}%
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
             <Link
@@ -90,7 +133,12 @@ export default function Dashboard() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {GAMES.map((g) => (
-            <GameCard key={g.id} game={g} best={bestScores[g.id]} />
+            <GameCard
+              key={g.id}
+              game={g}
+              best={bestScores[g.id]}
+              history={perGameHistory[g.id]}
+            />
           ))}
         </div>
       </section>
