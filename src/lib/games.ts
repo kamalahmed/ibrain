@@ -83,9 +83,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "pond",
     name: "Attention Pond",
-    tagline: "Tap every fish exactly once — no doubles.",
+    tagline: "Five ponds. 3 → 7 fish. Tap each one exactly once.",
     description:
-      "A divided-attention drill based on the Multiple Object Tracking paradigm (Pylyshyn & Storm, 1988). Fish drift around the pond; tap each one exactly once. Tap the same fish twice and you lose points.",
+      "A divided-attention drill based on Multiple Object Tracking (Pylyshyn & Storm, 1988). Five ponds, one 5-minute session: fish counts climb from 3 to 7 and lily-pad occlusion grows level by level. Tap every fish once — doubles cost points, and fed fish look the same as unfed.",
     path: "/play/pond",
     emoji: "🐟",
     accent: "from-cyan-400 to-emerald-500",

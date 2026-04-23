@@ -27,8 +27,8 @@ export function normalizeScore(id: GameId, raw: number): number {
       return clamp((raw / 1200) * 100);
     }
     case "pond": {
-      // points, higher is better. 2000 pts → 100
-      return clamp((raw / 2000) * 100);
+      // session points, higher is better. 2500 pts ≈ strong run → 100
+      return clamp((raw / 2500) * 100);
     }
   }
 }
