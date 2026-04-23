@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { GameMeta } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import { useStore } from "@/store/useStore";
+import { Confetti } from "@/components/Confetti";
+import { haptic } from "@/lib/haptics";
 
 type Props = {
   game: GameMeta;
@@ -20,14 +23,20 @@ export function ResultsScreen({
   detail,
 }: Props) {
   const best = useStore((s) => s.bestScores[game.id]);
+
+  useEffect(() => {
+    if (isBest) haptic.success();
+  }, [isBest]);
+
   return (
     <motion.section
       aria-labelledby="results-heading"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 220, damping: 24 }}
-      className="card text-center"
+      className="card relative overflow-hidden text-center"
     >
+      {isBest && <Confetti />}
       <h2 id="results-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {isBest ? "New best!" : "Round complete"}
       </h2>
