@@ -11,8 +11,8 @@ export function normalizeScore(id: GameId, raw: number): number {
       return clamp((raw / 2500) * 100);
     }
     case "memory": {
-      // points, higher is better. 1000pts → 100
-      return clamp((raw / 1000) * 100);
+      // session points, higher is better. 1500 pts ≈ strong run → 100
+      return clamp((raw / 1500) * 100);
     }
     case "nback": {
       // session points, higher is better. 900 pts ≈ cleared most levels with good hits → 100

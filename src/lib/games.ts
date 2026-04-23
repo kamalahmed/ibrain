@@ -35,9 +35,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "memory",
     name: "Memory Match",
-    tagline: "Flip, remember, match.",
+    tagline: "Five grids. 4×4 → 6×6. One 5-minute timer.",
     description:
-      "A classic matching game. Flip two cards at a time, find all pairs in as few moves and as little time as possible.",
+      "A classic matching game made bigger. Five grids in one 5-minute session — 4×4, 4×5, 4×6, 5×6, then 6×6. Flip two cards at a time; match all pairs to unlock the next grid.",
     path: "/play/memory",
     emoji: "🧩",
     accent: "from-teal-400 to-sky-500",
