@@ -9,6 +9,7 @@ export default function Dashboard() {
   const streak = useStore((s) => s.streak);
   const brainScore = useStore(selectBrainScore);
   const history = useStore((s) => s.history);
+  const resetTutorials = useStore((s) => s.resetTutorials);
   const recent = history.slice(0, 5);
   const totalPlayed = history.length;
 
@@ -87,6 +88,16 @@ export default function Dashboard() {
           </ul>
         </section>
       )}
+
+      <section aria-label="Preferences" className="mt-10 flex justify-center">
+        <button
+          type="button"
+          onClick={() => resetTutorials()}
+          className="btn-ghost text-sm"
+        >
+          Replay tutorials
+        </button>
+      </section>
     </main>
   );
 }

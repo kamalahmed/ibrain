@@ -4,10 +4,11 @@ import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
+import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
-type Phase = "intro" | "countdown" | "playing" | "done";
+type Phase = "intro" | "tutorial" | "countdown" | "playing" | "done";
 
 type Card = {
   id: number;
@@ -41,6 +42,8 @@ function makeDeck(): Card[] {
 export default function MemoryMatch() {
   const game = getGame("memory");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [deck, setDeck] = useState<Card[]>([]);
@@ -66,8 +69,33 @@ export default function MemoryMatch() {
     setDeck(makeDeck());
     setMoves(0);
     setElapsed(0);
+    setPhase(tutorialSeen ? "countdown" : "tutorial");
+  };
+
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
     setPhase("countdown");
   };
+
+  const tutorialSteps: TutorialStep[] = [
+    {
+      caption: "All cards start face-down.",
+      stage: <MemoryDemo stage="hidden" />,
+    },
+    {
+      caption: "Flip two cards at a time. Different symbols flip back.",
+      stage: <MemoryDemo stage="mismatch" />,
+    },
+    {
+      caption: "Match the symbols and the pair stays revealed.",
+      stage: <MemoryDemo stage="match" />,
+    },
+    {
+      caption:
+        "Find all 8 pairs in as few moves and as little time as possible.",
+      stage: <MemoryDemo stage="hidden" />,
+    },
+  ];
 
   const startPlay = () => {
     setStartedAt(Date.now());
@@ -137,6 +165,10 @@ export default function MemoryMatch() {
         <Instructions game={game} onStart={begin}>
           16 cards, 8 pairs. Flip two at a time and match them all.
         </Instructions>
+      )}
+
+      {phase === "tutorial" && (
+        <Tutorial steps={tutorialSteps} onDone={afterTutorial} />
       )}
 
       {phase === "countdown" && <Countdown onDone={startPlay} />}
@@ -213,5 +245,40 @@ function MemoryCard({ card, onFlip }: { card: Card; onFlip: () => void }) {
         {card.symbol}
       </motion.span>
     </motion.button>
+  );
+}
+
+function MemoryDemo({
+  stage,
+}: {
+  stage: "hidden" | "mismatch" | "match";
+}) {
+  const tiles: Array<{ face: string | null; matched?: boolean }> = [
+    { face: stage === "hidden" ? null : "🍎", matched: stage === "match" },
+    { face: stage === "hidden" ? null : null },
+    { face: stage === "hidden" ? null : null },
+    {
+      face: stage === "hidden" ? null : stage === "match" ? "🍎" : "🚀",
+      matched: stage === "match",
+    },
+  ];
+  return (
+    <div className="mx-auto grid max-w-[16rem] grid-cols-2 gap-3">
+      {tiles.map((t, i) => (
+        <div
+          key={i}
+          className={
+            "grid aspect-square place-items-center rounded-2xl text-3xl shadow-soft " +
+            (t.matched
+              ? "bg-emerald-100 ring-2 ring-emerald-300"
+              : t.face
+              ? "bg-white ring-1 ring-slate-200"
+              : "bg-gradient-to-br from-brand-500 to-accent-teal text-white")
+          }
+        >
+          {t.face ?? "?"}
+        </div>
+      ))}
+    </div>
   );
 }

@@ -28,6 +28,10 @@ export function normalizeScore(id: GameId, raw: number): number {
       const v = 100 - ((raw - 20) / (90 - 20)) * 100;
       return clamp(v);
     }
+    case "pond": {
+      // points, higher is better. 2000 pts → 100
+      return clamp((raw / 2000) * 100);
+    }
   }
 }
 
@@ -44,6 +48,7 @@ export function formatScore(id: GameId, raw: number): string {
     case "memory":
     case "nback":
     case "math":
+    case "pond":
       return `${Math.round(raw)} pts`;
   }
 }
