@@ -23,9 +23,8 @@ export function normalizeScore(id: GameId, raw: number): number {
       return clamp((raw / 400) * 100);
     }
     case "schulte": {
-      // seconds, lower is better. 20s → 100, 90s → 0
-      const v = 100 - ((raw - 20) / (90 - 20)) * 100;
-      return clamp(v);
+      // session points, higher is better. 1200 session pts ≈ strong run → 100
+      return clamp((raw / 1200) * 100);
     }
     case "pond": {
       // points, higher is better. 2000 pts → 100
@@ -43,7 +42,6 @@ export function formatScore(id: GameId, raw: number): string {
     case "reaction":
       return `${Math.round(raw)} pts`;
     case "schulte":
-      return `${raw.toFixed(1)} s`;
     case "memory":
     case "nback":
     case "math":
