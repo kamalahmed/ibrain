@@ -8,8 +8,8 @@ import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { LevelProgress } from "@/components/LevelProgress";
 import { LevelComplete } from "@/components/LevelComplete";
 import { getGame } from "@/lib/games";
-import { useStore } from "@/store/useStore";
 import { haptic } from "@/lib/haptics";
+import { useStore } from "@/store/useStore";
 
 type Phase =
   | "intro"
@@ -19,12 +19,17 @@ type Phase =
   | "levelDone"
   | "done";
 
-type TrialState = "waiting" | "ready" | "tooSoon" | "feedback";
+type Shape = "circle" | "square" | "triangle";
+type Color = "green" | "red" | "yellow" | "blue";
+type Stimulus = { shape: Shape; color: Color };
 
-type Stimulus = {
-  go: boolean;
-  color: "green" | "red";
-  shape: "circle" | "square";
+type Rule = {
+  label: string; // "Tap any circle"
+  isTarget: (s: Stimulus) => boolean;
+  shapes: Shape[];
+  colors: Color[];
+  /** ~target density across the stream */
+  targetBias: number;
 };
 
 type TrialResult = {
@@ -36,98 +41,131 @@ type TrialResult = {
 type Level = {
   id: 1 | 2 | 3 | 4 | 5;
   name: string;
+  rule: Rule;
   trialCount: number;
   requiredCorrect: number;
-  windowMs: number;
-  delayRange: [number, number];
-  instruction: string;
-  genStimulus: () => Stimulus;
+  startWindowMs: number;
+  endWindowMs: number;
 };
 
 const SESSION_SECONDS = 300;
-const LEVEL_CLEAR_BONUS = 50;
+const LEVEL_CLEAR_BONUS = 75;
+const INTER_STIMULUS_MS = 250;
+const POINTS_NOGO_CORRECT = 30;
+const POINTS_FALSE_ALARM = -5;
 
-function stim(
-  go: boolean,
-  color: "green" | "red",
-  shape: "circle" | "square"
-): Stimulus {
-  return { go, color, shape };
-}
+/* ---------------- Rules ---------------- */
 
-function genSimple(): Stimulus {
-  return stim(true, "green", "circle");
-}
-
-function genGoNoGo(): Stimulus {
-  const go = Math.random() < 0.65;
-  return stim(go, go ? "green" : "red", "circle");
-}
-
-function genDiscrim(): Stimulus {
-  const r = Math.random();
-  if (r < 0.5) return stim(true, "green", "circle"); // GO
-  if (r < 0.75) return stim(false, "red", "circle"); // NO-GO (red circle)
-  return stim(false, "green", "square"); // NO-GO (green square)
-}
+const ruleAnyCircle: Rule = {
+  label: "Tap any CIRCLE",
+  isTarget: (s) => s.shape === "circle",
+  shapes: ["circle", "square", "triangle"],
+  colors: ["green", "red"],
+  targetBias: 0.55,
+};
+const ruleAnyGreen: Rule = {
+  label: "Tap any GREEN",
+  isTarget: (s) => s.color === "green",
+  shapes: ["circle", "square", "triangle"],
+  colors: ["green", "red", "yellow"],
+  targetBias: 0.5,
+};
+const ruleAnySquare: Rule = {
+  label: "Tap any SQUARE",
+  isTarget: (s) => s.shape === "square",
+  shapes: ["circle", "square", "triangle"],
+  colors: ["green", "red", "blue"],
+  targetBias: 0.5,
+};
+const ruleAnyRed: Rule = {
+  label: "Tap any RED",
+  isTarget: (s) => s.color === "red",
+  shapes: ["circle", "square", "triangle"],
+  colors: ["green", "red", "yellow", "blue"],
+  targetBias: 0.45,
+};
+const ruleGreenCircleOnly: Rule = {
+  label: "Tap only GREEN CIRCLE",
+  isTarget: (s) => s.color === "green" && s.shape === "circle",
+  shapes: ["circle", "square", "triangle"],
+  colors: ["green", "red", "yellow", "blue"],
+  targetBias: 0.35,
+};
 
 const LEVELS: Level[] = [
   {
     id: 1,
-    name: "Warm-up",
-    trialCount: 3,
-    requiredCorrect: 3,
-    windowMs: 2500,
-    delayRange: [1200, 3000],
-    instruction: "Tap the moment the circle turns green.",
-    genStimulus: genSimple,
+    name: "Any circle",
+    rule: ruleAnyCircle,
+    trialCount: 10,
+    requiredCorrect: 8,
+    startWindowMs: 1600,
+    endWindowMs: 1100,
   },
   {
     id: 2,
-    name: "Faster",
-    trialCount: 4,
-    requiredCorrect: 4,
-    windowMs: 2000,
-    delayRange: [900, 2200],
-    instruction: "Same drill — shorter waits.",
-    genStimulus: genSimple,
+    name: "Any green",
+    rule: ruleAnyGreen,
+    trialCount: 12,
+    requiredCorrect: 9,
+    startWindowMs: 1400,
+    endWindowMs: 950,
   },
   {
     id: 3,
-    name: "Go / no-go",
-    trialCount: 5,
-    requiredCorrect: 4,
-    windowMs: 1400,
-    delayRange: [900, 2100],
-    instruction: "Green circle = tap. Red circle = don't tap.",
-    genStimulus: genGoNoGo,
+    name: "Any square",
+    rule: ruleAnySquare,
+    trialCount: 14,
+    requiredCorrect: 10,
+    startWindowMs: 1200,
+    endWindowMs: 850,
   },
   {
     id: 4,
-    name: "Only green circles",
-    trialCount: 5,
-    requiredCorrect: 4,
-    windowMs: 1300,
-    delayRange: [800, 1900],
-    instruction: "Tap only for a green circle. Green squares & red = hold.",
-    genStimulus: genDiscrim,
+    name: "Any red",
+    rule: ruleAnyRed,
+    trialCount: 14,
+    requiredCorrect: 10,
+    startWindowMs: 1100,
+    endWindowMs: 750,
   },
   {
     id: 5,
-    name: "Lightning",
-    trialCount: 6,
-    requiredCorrect: 5,
-    windowMs: 900,
-    delayRange: [700, 1600],
-    instruction: "Green circle only, and fast.",
-    genStimulus: genDiscrim,
+    name: "Green circle only",
+    rule: ruleGreenCircleOnly,
+    trialCount: 16,
+    requiredCorrect: 11,
+    startWindowMs: 950,
+    endWindowMs: 650,
   },
 ];
 
+function pickStimulus(rule: Rule): Stimulus {
+  const wantTarget = Math.random() < rule.targetBias;
+  const pool: Stimulus[] = [];
+  for (const shape of rule.shapes) {
+    for (const color of rule.colors) {
+      pool.push({ shape, color });
+    }
+  }
+  const subset = pool.filter((s) => rule.isTarget(s) === wantTarget);
+  const arr = subset.length > 0 ? subset : pool;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function windowForTrial(lvl: Level, trialIdx: number): number {
+  const denom = Math.max(1, lvl.trialCount - 1);
+  const t = Math.min(1, trialIdx / denom);
+  return Math.round(
+    lvl.startWindowMs + (lvl.endWindowMs - lvl.startWindowMs) * t
+  );
+}
+
 function scoreForHit(ms: number): number {
-  // ~200 ms → ~200 pts, ~500 ms → ~100 pts, ~800 ms → 0 pts. Clamped floor 20.
   return Math.max(20, Math.round((800 - ms) / 3));
 }
+
+/* ---------------- Component ---------------- */
 
 export default function ReactionTime() {
   const game = getGame("reaction");
@@ -138,41 +176,45 @@ export default function ReactionTime() {
   const [phase, setPhase] = useState<Phase>("intro");
   const [levelIdx, setLevelIdx] = useState(0);
   const [trialIdx, setTrialIdx] = useState(0);
-  const [trialState, setTrialState] = useState<TrialState>("waiting");
   const [stimulus, setStimulus] = useState<Stimulus | null>(null);
-  const [timeLeft, setTimeLeft] = useState(SESSION_SECONDS);
+  const [windowMs, setWindowMs] = useState(1400);
   const [score, setScore] = useState(0);
   const [levelCorrect, setLevelCorrect] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(SESSION_SECONDS);
   const [lastResult, setLastResult] = useState<TrialResult | null>(null);
   const [lastCleared, setLastCleared] = useState(0);
   const [lastLevelScore, setLastLevelScore] = useState(0);
-  const [isBest, setIsBest] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
+  const [isBest, setIsBest] = useState(false);
   const [totalHits, setTotalHits] = useState(0);
+  const [falseAlarms, setFalseAlarms] = useState(0);
 
   const scoreRef = useRef(0);
-  const clearedRef = useRef(0);
   const levelPointsRef = useRef(0);
+  const clearedRef = useRef(0);
+  const levelIdxRef = useRef(0);
+  const trialIdxRef = useRef(0);
+  const levelCorrectRef = useRef(0);
   const deadlineRef = useRef(0);
   const sessionTickRef = useRef<number | null>(null);
-  const trialDelayRef = useRef<number | null>(null);
   const responseTimerRef = useRef<number | null>(null);
+  const interStimulusTimerRef = useRef<number | null>(null);
   const startAtRef = useRef(0);
+  const respondedRef = useRef(false);
   const endedRef = useRef(false);
 
   const currentLevel = LEVELS[levelIdx];
 
   const clearTimers = () => {
-    if (trialDelayRef.current !== null) {
-      window.clearTimeout(trialDelayRef.current);
-      trialDelayRef.current = null;
-    }
     if (responseTimerRef.current !== null) {
       window.clearTimeout(responseTimerRef.current);
       responseTimerRef.current = null;
     }
+    if (interStimulusTimerRef.current !== null) {
+      window.clearTimeout(interStimulusTimerRef.current);
+      interStimulusTimerRef.current = null;
+    }
   };
-
   const stopSessionTick = () => {
     if (sessionTickRef.current !== null) {
       window.clearInterval(sessionTickRef.current);
@@ -202,150 +244,123 @@ export default function ReactionTime() {
         );
         final += remaining;
       }
-      scoreRef.current = final;
-      setScore(final);
-      const { isBest: best } = recordPlay("reaction", final);
-      setFinalScore(final);
+      scoreRef.current = Math.max(0, final);
+      setScore(scoreRef.current);
+      const { isBest: best } = recordPlay("reaction", scoreRef.current);
+      setFinalScore(scoreRef.current);
       setIsBest(best);
       setPhase("done");
     },
     [recordPlay]
   );
 
-  /* ----- Trial machinery ----- */
-
-  const armTrial = useCallback(() => {
-    if (endedRef.current) return;
-    const lvl = LEVELS[levelIdxRef.current];
-    const [a, b] = lvl.delayRange;
-    const delay = a + Math.random() * (b - a);
-    setStimulus(null);
-    setTrialState("waiting");
-    trialDelayRef.current = window.setTimeout(() => {
-      const s = lvl.genStimulus();
-      setStimulus(s);
-      startAtRef.current = performance.now();
-      setTrialState("ready");
-      // response window
-      responseTimerRef.current = window.setTimeout(() => {
-        handleTimeout(s);
-      }, lvl.windowMs);
-    }, delay);
-  }, []);
-
-  // Keep a ref-mirror of levelIdx for use inside setTimeout callbacks
-  const levelIdxRef = useRef(0);
-  useEffect(() => {
-    levelIdxRef.current = levelIdx;
-  }, [levelIdx]);
-
-  const afterTrial = (result: TrialResult) => {
-    clearTimers();
-    setLastResult(result);
-    if (result.pts > 0) {
-      scoreRef.current += result.pts;
+  const evaluate = (result: TrialResult) => {
+    if (result.pts !== 0) {
+      scoreRef.current = Math.max(0, scoreRef.current + result.pts);
       levelPointsRef.current += result.pts;
       setScore(scoreRef.current);
     }
-    const correctThisTrial =
-      result.kind === "hit" || result.kind === "nogo-correct";
-    if (result.kind === "hit") setTotalHits((n) => n + 1);
-    if (correctThisTrial) {
+    const correct = result.kind === "hit" || result.kind === "nogo-correct";
+    if (correct) {
       levelCorrectRef.current += 1;
       setLevelCorrect(levelCorrectRef.current);
     }
-    setTrialState("feedback");
+    if (result.kind === "hit") setTotalHits((n) => n + 1);
+    if (result.kind === "wrong") setFalseAlarms((n) => n + 1);
+    setLastResult(result);
+    window.setTimeout(() => setLastResult(null), INTER_STIMULUS_MS);
+  };
 
+  const armNext = useCallback(() => {
+    if (endedRef.current) return;
     const lvl = LEVELS[levelIdxRef.current];
-    const isLastTrial = trialIdxRef.current + 1 >= lvl.trialCount;
-
-    window.setTimeout(() => {
-      if (endedRef.current) return;
-      if (isLastTrial) {
-        if (levelCorrectRef.current >= lvl.requiredCorrect) {
-          scoreRef.current += LEVEL_CLEAR_BONUS;
-          levelPointsRef.current += LEVEL_CLEAR_BONUS;
-          setScore(scoreRef.current);
-          clearedRef.current += 1;
-          setLastCleared(lvl.id);
-          setLastLevelScore(levelPointsRef.current);
-          const nextIdx = levelIdxRef.current + 1;
-          if (nextIdx >= LEVELS.length) {
-            setPhase("levelDone");
-            window.setTimeout(() => end(true), 1100);
-          } else {
-            setPhase("levelDone");
-            window.setTimeout(() => startLevel(nextIdx), 1100);
-          }
+    const i = trialIdxRef.current;
+    if (i >= lvl.trialCount) {
+      // Level complete — evaluate pass/fail
+      if (levelCorrectRef.current >= lvl.requiredCorrect) {
+        scoreRef.current += LEVEL_CLEAR_BONUS;
+        levelPointsRef.current += LEVEL_CLEAR_BONUS;
+        setScore(scoreRef.current);
+        clearedRef.current += 1;
+        setLastCleared(lvl.id);
+        setLastLevelScore(levelPointsRef.current);
+        const nextIdx = levelIdxRef.current + 1;
+        if (nextIdx >= LEVELS.length) {
+          setPhase("levelDone");
+          window.setTimeout(() => end(true), 1100);
         } else {
-          end(false);
+          setPhase("levelDone");
+          window.setTimeout(() => startLevel(nextIdx), 1100);
         }
       } else {
-        trialIdxRef.current += 1;
-        setTrialIdx(trialIdxRef.current);
-        armTrial();
+        end(false);
       }
-    }, 550);
-  };
-
-  // Mirror refs for trial callbacks
-  const trialIdxRef = useRef(0);
-  const levelCorrectRef = useRef(0);
-  useEffect(() => {
-    trialIdxRef.current = trialIdx;
-  }, [trialIdx]);
-  useEffect(() => {
-    levelCorrectRef.current = levelCorrect;
-  }, [levelCorrect]);
-
-  const handleTimeout = (s: Stimulus) => {
-    // Response window expired without a tap
-    if (s.go) {
-      afterTrial({ kind: "miss", pts: 0 });
-    } else {
-      afterTrial({ kind: "nogo-correct", pts: 30 });
+      return;
     }
-  };
+    const win = windowForTrial(lvl, i);
+    setWindowMs(win);
+    const s = pickStimulus(lvl.rule);
+    setStimulus(s);
+    respondedRef.current = false;
+    startAtRef.current = performance.now();
+
+    responseTimerRef.current = window.setTimeout(() => {
+      if (respondedRef.current || endedRef.current) return;
+      const isTarget = lvl.rule.isTarget(s);
+      evaluate(
+        isTarget
+          ? { kind: "miss", pts: 0 }
+          : { kind: "nogo-correct", pts: POINTS_NOGO_CORRECT }
+      );
+      trialIdxRef.current += 1;
+      setTrialIdx(trialIdxRef.current);
+      setStimulus(null);
+      interStimulusTimerRef.current = window.setTimeout(armNext, INTER_STIMULUS_MS);
+    }, win);
+  }, [end]);
+
+  const startLevel = useCallback(
+    (idx: number) => {
+      setLevelIdx(idx);
+      levelIdxRef.current = idx;
+      setTrialIdx(0);
+      trialIdxRef.current = 0;
+      setLevelCorrect(0);
+      levelCorrectRef.current = 0;
+      levelPointsRef.current = 0;
+      setLastResult(null);
+      setStimulus(null);
+      setPhase("playing");
+      clearTimers();
+      // tiny pause so the level banner is readable
+      interStimulusTimerRef.current = window.setTimeout(armNext, 450);
+    },
+    [armNext]
+  );
 
   const onStageTap = () => {
-    if (phase !== "playing") return;
-    if (trialState === "tooSoon") {
-      // re-arm same trial
-      armTrial();
+    if (phase !== "playing" || !stimulus || respondedRef.current || endedRef.current)
       return;
+    respondedRef.current = true;
+    if (responseTimerRef.current !== null) {
+      window.clearTimeout(responseTimerRef.current);
+      responseTimerRef.current = null;
     }
-    if (trialState === "waiting") {
-      clearTimers();
-      setTrialState("tooSoon");
+    const lvl = LEVELS[levelIdxRef.current];
+    const ms = performance.now() - startAtRef.current;
+    const isTarget = lvl.rule.isTarget(stimulus);
+    if (isTarget) {
+      haptic.success();
+      evaluate({ kind: "hit", ms, pts: scoreForHit(ms) });
+    } else {
       haptic.error();
-      return;
+      evaluate({ kind: "wrong", pts: POINTS_FALSE_ALARM });
     }
-    if (trialState === "ready" && stimulus) {
-      const ms = performance.now() - startAtRef.current;
-      if (stimulus.go) {
-        haptic.success();
-        afterTrial({ kind: "hit", ms, pts: scoreForHit(ms) });
-      } else {
-        haptic.error();
-        afterTrial({ kind: "wrong", pts: 0 });
-      }
-    }
+    trialIdxRef.current += 1;
+    setTrialIdx(trialIdxRef.current);
+    setStimulus(null);
+    interStimulusTimerRef.current = window.setTimeout(armNext, INTER_STIMULUS_MS);
   };
-
-  /* ----- Level / session machinery ----- */
-
-  const startLevel = useCallback((idx: number) => {
-    setLevelIdx(idx);
-    levelIdxRef.current = idx;
-    setTrialIdx(0);
-    trialIdxRef.current = 0;
-    setLevelCorrect(0);
-    levelCorrectRef.current = 0;
-    levelPointsRef.current = 0;
-    setLastResult(null);
-    setPhase("playing");
-    armTrial();
-  }, [armTrial]);
 
   const startSession = () => {
     deadlineRef.current = Date.now() + SESSION_SECONDS * 1000;
@@ -373,7 +388,9 @@ export default function ReactionTime() {
     setLevelCorrect(0);
     levelCorrectRef.current = 0;
     setTotalHits(0);
+    setFalseAlarms(0);
     setLastResult(null);
+    setStimulus(null);
     setTimeLeft(SESSION_SECONDS);
     endedRef.current = false;
     setPhase(tutorialSeen ? "countdown" : "tutorial");
@@ -384,29 +401,65 @@ export default function ReactionTime() {
     setPhase("countdown");
   };
 
-  /* ----- Tutorial ----- */
+  /* ---------------- Tutorial ---------------- */
 
   const tutorialSteps: TutorialStep[] = [
     {
-      caption: "Wait for the circle to appear. When it's green, tap fast.",
+      caption: "Each level has a rule. Tap when a shape matches the rule — ignore everything else.",
       stage: (
-        <DemoStage trialState="ready" stimulus={stim(true, "green", "circle")} label="Green circle — TAP" />
+        <div className="grid min-h-[26vh] place-items-center rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          <div className="text-center">
+            <div className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Rule
+            </div>
+            <div className="mt-1 text-2xl font-black text-slate-900 dark:text-white">
+              Tap any CIRCLE
+            </div>
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <StimulusShape stimulus={{ shape: "circle", color: "green" }} size={56} />
+              <StimulusShape stimulus={{ shape: "circle", color: "red" }} size={56} />
+              <div className="opacity-40">
+                <StimulusShape stimulus={{ shape: "square", color: "green" }} size={56} />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Both circles → tap. Square → hold.
+            </p>
+          </div>
+        </div>
       ),
     },
     {
-      caption: "Levels 3+: red circles mean DON'T tap. Hold still.",
+      caption: "Shapes stream non-stop. Each one disappears if you don't tap in time.",
       stage: (
-        <DemoStage trialState="ready" stimulus={stim(false, "red", "circle")} label="Red — HOLD" />
+        <div className="grid min-h-[26vh] place-items-center rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          <div className="flex items-center gap-4">
+            <StimulusShape stimulus={{ shape: "circle", color: "green" }} size={52} />
+            <span className="text-slate-400">→</span>
+            <StimulusShape stimulus={{ shape: "triangle", color: "red" }} size={52} />
+            <span className="text-slate-400">→</span>
+            <StimulusShape stimulus={{ shape: "square", color: "blue" }} size={52} />
+          </div>
+        </div>
       ),
     },
     {
-      caption: "Levels 4-5: even a green SQUARE is a trap. Only green CIRCLES count.",
+      caption: "Rules change every level — shape, colour, or both. And the stream gets faster.",
       stage: (
-        <DemoStage trialState="ready" stimulus={stim(false, "green", "square")} label="Green square — HOLD" />
+        <div className="mx-auto grid max-w-md gap-2 rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          {LEVELS.map((l) => (
+            <div key={l.id} className="flex items-center justify-between text-sm">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                Level {l.id}
+              </span>
+              <span className="text-slate-900 dark:text-white">{l.rule.label}</span>
+            </div>
+          ))}
+        </div>
       ),
     },
     {
-      caption: "Clear every level inside 5 minutes. Faster taps = more points.",
+      caption: "Hit = points (faster = more). Tap the wrong shape = -5. Miss a target = 0.",
       stage: (
         <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
           <LevelProgress total={5} current={1} cleared={0} />
@@ -415,41 +468,38 @@ export default function ReactionTime() {
     },
   ];
 
-  /* ----- Render helpers ----- */
+  /* ---------------- Render ---------------- */
 
-  const stageBg =
-    trialState === "tooSoon"
-      ? "bg-rose-500"
-      : trialState === "ready"
-      ? "bg-slate-100 dark:bg-slate-800"
-      : "bg-slate-800";
+  const feedbackColor =
+    lastResult?.kind === "hit"
+      ? "ring-emerald-300"
+      : lastResult?.kind === "nogo-correct"
+      ? "ring-emerald-200"
+      : lastResult?.kind === "wrong"
+      ? "ring-rose-300"
+      : lastResult?.kind === "miss"
+      ? "ring-amber-300"
+      : "ring-slate-200 dark:ring-slate-800";
 
-  const stageText =
-    trialState === "tooSoon"
-      ? "Too soon — tap to retry"
-      : trialState === "waiting"
-      ? "Wait…"
-      : trialState === "ready"
-      ? currentLevel.id <= 2
-        ? "Tap!"
-        : ""
-      : lastResult?.kind === "hit"
+  const feedbackText =
+    lastResult?.kind === "hit"
       ? `+${lastResult.pts} · ${Math.round(lastResult.ms || 0)} ms`
       : lastResult?.kind === "nogo-correct"
-      ? "+30 · held"
-      : lastResult?.kind === "miss"
-      ? "Missed"
+      ? `+${POINTS_NOGO_CORRECT} · held`
       : lastResult?.kind === "wrong"
-      ? "Shouldn't have tapped"
-      : "";
+      ? `${POINTS_FALSE_ALARM} · wrong shape`
+      : lastResult?.kind === "miss"
+      ? "missed"
+      : null;
 
   return (
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five reaction levels in one 5-minute session. Level 1 is a simple
-          reflex test; by level 5 you're only allowed to tap on a green
-          circle — green squares and red circles are traps.
+          Five reaction levels in one 5-minute session. Each level has a
+          different rule — sometimes it's about the shape, sometimes the
+          colour, sometimes both. Stimuli stream continuously and the
+          cadence tightens within and across levels.
         </Instructions>
       )}
 
@@ -460,7 +510,7 @@ export default function ReactionTime() {
       {phase === "countdown" && <Countdown onDone={startSession} />}
 
       {(phase === "playing" || phase === "levelDone") && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <LevelProgress
               total={LEVELS.length}
@@ -486,14 +536,22 @@ export default function ReactionTime() {
             </div>
           </div>
 
+          <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-accent-teal px-4 py-2 text-center text-white shadow-soft" data-testid="rule">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/80">
+              Rule
+            </div>
+            <div className="text-lg font-black sm:text-xl">
+              {currentLevel.rule.label}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>
-              {currentLevel.name} · {currentLevel.instruction}
+              {currentLevel.name} · need {currentLevel.requiredCorrect} / {currentLevel.trialCount}
             </span>
             <span data-testid="progress">
-              {levelCorrect} / {currentLevel.requiredCorrect} correct · trial{" "}
-              {Math.min(trialIdx + 1, currentLevel.trialCount)} /{" "}
-              {currentLevel.trialCount}
+              {levelCorrect} correct · trial{" "}
+              {Math.min(trialIdx + 1, currentLevel.trialCount)} / {currentLevel.trialCount}
             </span>
           </div>
 
@@ -502,7 +560,7 @@ export default function ReactionTime() {
               levelJustCleared={lastCleared}
               totalLevels={LEVELS.length}
               levelScore={lastLevelScore}
-              nextLabel={LEVELS[lastCleared]?.name}
+              nextLabel={LEVELS[lastCleared]?.rule.label}
             />
           ) : (
             <button
@@ -510,35 +568,44 @@ export default function ReactionTime() {
               onClick={onStageTap}
               aria-label="Reaction stage"
               data-testid="stage"
-              data-state={trialState}
               className={
-                "no-select relative grid min-h-[60vh] w-full place-items-center overflow-hidden rounded-3xl px-6 text-center text-xl font-bold text-white transition-colors sm:text-2xl " +
-                stageBg
+                "no-select relative grid min-h-[54vh] w-full place-items-center overflow-hidden rounded-3xl bg-slate-100 px-6 text-center ring-1 transition-colors dark:bg-slate-900 " +
+                feedbackColor
               }
             >
               <AnimatePresence mode="wait">
-                {trialState === "ready" && stimulus && (
+                {stimulus && (
                   <motion.div
-                    key={JSON.stringify(stimulus) + trialIdx + levelIdx}
-                    initial={{ scale: 0.3, opacity: 0 }}
+                    key={`stim-${levelIdx}-${trialIdx}`}
+                    initial={{ scale: 0.4, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                    transition={{ type: "spring", stiffness: 320, damping: 18 }}
-                    className="grid place-items-center"
-                  >
-                    <StimulusShape stimulus={stimulus} />
-                  </motion.div>
-                )}
-                {trialState !== "ready" && (
-                  <motion.span
-                    key={trialState + (lastResult?.kind || "")}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    exit={{ scale: 0.85, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 340, damping: 18 }}
                     className="relative"
                   >
-                    {stageText}
-                  </motion.span>
+                    <CountdownRing durationMs={windowMs} />
+                    <div data-testid="stimulus" data-shape={stimulus.shape} data-color={stimulus.color}>
+                      <StimulusShape stimulus={stimulus} size={180} />
+                    </div>
+                  </motion.div>
+                )}
+                {!stimulus && feedbackText && (
+                  <motion.div
+                    key={`fb-${lastResult?.kind}-${trialIdx}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className={
+                      "text-xl font-bold sm:text-2xl " +
+                      (lastResult?.kind === "hit" || lastResult?.kind === "nogo-correct"
+                        ? "text-emerald-600 dark:text-emerald-300"
+                        : lastResult?.kind === "wrong"
+                        ? "text-rose-600 dark:text-rose-300"
+                        : "text-amber-600 dark:text-amber-300")
+                    }
+                  >
+                    {feedbackText}
+                  </motion.div>
                 )}
               </AnimatePresence>
             </button>
@@ -552,54 +619,111 @@ export default function ReactionTime() {
           score={finalScore}
           isBest={isBest}
           onPlayAgain={begin}
-          detail={`${clearedRef.current} / ${LEVELS.length} levels · ${totalHits} taps scored`}
+          detail={`${clearedRef.current} / ${LEVELS.length} levels · ${totalHits} hits · ${falseAlarms} false alarm${falseAlarms === 1 ? "" : "s"}`}
         />
       )}
     </GameShell>
   );
 }
 
-/* ---------------- Presentation bits ---------------- */
+/* ---------------- Stimulus shape ---------------- */
 
-function StimulusShape({ stimulus }: { stimulus: Stimulus }) {
-  const color =
-    stimulus.color === "green" ? "bg-emerald-500" : "bg-rose-500";
+const COLOR_FILL: Record<Color, string> = {
+  green: "#10b981",
+  red: "#ef4444",
+  yellow: "#eab308",
+  blue: "#3b82f6",
+};
+const COLOR_STROKE: Record<Color, string> = {
+  green: "#047857",
+  red: "#991b1b",
+  yellow: "#a16207",
+  blue: "#1e40af",
+};
+
+function StimulusShape({
+  stimulus,
+  size = 180,
+}: {
+  stimulus: Stimulus;
+  size?: number;
+}) {
+  const fill = COLOR_FILL[stimulus.color];
+  const stroke = COLOR_STROKE[stimulus.color];
+  const s = size;
   return (
-    <div
-      className={
-        "h-44 w-44 sm:h-56 sm:w-56 " +
-        color +
-        " " +
-        (stimulus.shape === "circle" ? "rounded-full" : "rounded-3xl") +
-        " shadow-2xl"
-      }
+    <svg
+      width={s}
+      height={s}
+      viewBox="0 0 100 100"
       aria-label={`${stimulus.color} ${stimulus.shape}`}
-      data-testid="stimulus"
-      data-shape={stimulus.shape}
-      data-color={stimulus.color}
-      data-go={stimulus.go ? "1" : "0"}
-    />
+    >
+      {stimulus.shape === "circle" && (
+        <circle cx="50" cy="50" r="44" fill={fill} stroke={stroke} strokeWidth="3" />
+      )}
+      {stimulus.shape === "square" && (
+        <rect
+          x="8"
+          y="8"
+          width="84"
+          height="84"
+          rx="14"
+          fill={fill}
+          stroke={stroke}
+          strokeWidth="3"
+        />
+      )}
+      {stimulus.shape === "triangle" && (
+        <polygon
+          points="50,8 92,88 8,88"
+          fill={fill}
+          stroke={stroke}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+      )}
+    </svg>
   );
 }
 
-function DemoStage({
-  trialState,
-  stimulus,
-  label,
-}: {
-  trialState: TrialState;
-  stimulus?: Stimulus;
-  label: string;
-}) {
+/* ---------------- Shrinking countdown ring ---------------- */
+
+function CountdownRing({ durationMs }: { durationMs: number }) {
+  const R = 54;
+  const C = 2 * Math.PI * R;
   return (
-    <div className="grid min-h-[28vh] place-items-center rounded-2xl bg-slate-100 p-6 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-      <div className="flex flex-col items-center gap-3">
-        {stimulus && trialState === "ready" && <StimulusShape stimulus={stimulus} />}
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {label}
-        </span>
-      </div>
-    </div>
+    <svg
+      className="pointer-events-none absolute -inset-3"
+      width="100%"
+      height="100%"
+      viewBox="0 0 120 120"
+      aria-hidden
+    >
+      <circle
+        cx="60"
+        cy="60"
+        r={R}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.2"
+        strokeWidth="4"
+        className="text-slate-500"
+      />
+      <motion.circle
+        cx="60"
+        cy="60"
+        r={R}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
+        transform="rotate(-90 60 60)"
+        className="text-brand-500"
+        initial={{ strokeDasharray: `${C} ${C}`, strokeDashoffset: 0 }}
+        animate={{ strokeDashoffset: C }}
+        transition={{ duration: durationMs / 1000, ease: "linear" }}
+      />
+    </svg>
   );
 }
 
