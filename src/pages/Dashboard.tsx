@@ -2,14 +2,15 @@ import { motion } from "framer-motion";
 import { GameCard } from "@/components/GameCard";
 import { GAMES } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
-import { selectBrainScore, selectRecent, useStore } from "@/store/useStore";
+import { selectBrainScore, useStore } from "@/store/useStore";
 
 export default function Dashboard() {
   const bestScores = useStore((s) => s.bestScores);
   const streak = useStore((s) => s.streak);
   const brainScore = useStore(selectBrainScore);
-  const recent = useStore((s) => selectRecent(s, 5));
-  const totalPlayed = useStore((s) => s.history.length);
+  const history = useStore((s) => s.history);
+  const recent = history.slice(0, 5);
+  const totalPlayed = history.length;
 
   return (
     <main className="mx-auto max-w-5xl safe-px pb-16 pt-6">
