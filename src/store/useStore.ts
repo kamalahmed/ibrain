@@ -12,6 +12,16 @@ export type PlayRecord = {
   playedAt: number; // epoch ms
 };
 
+export type DailyResult = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  totalScore: number;
+  perGame: Array<{ game: GameId; score: number }>;
+  completedAt: number;
+  /** True if played after today's non-practice daily already existed (streak-neutral). */
+  isPractice?: boolean;
+};
+
 type BestByGame = Partial<Record<GameId, number>>;
 
 type State = {
@@ -21,10 +31,18 @@ type State = {
   lastPlayed: string | null; // YYYY-MM-DD
   theme: "light" | "dark" | "system";
   tutorialsSeen: Partial<Record<GameId, boolean>>;
+  dailyResults: DailyResult[]; // most recent first
+  dailyStreak: number;
+  lastDailyDate: string | null; // YYYY-MM-DD of the last non-practice daily
+  bestDaily: number;
 };
 
 type Actions = {
   recordPlay: (game: GameId, score: number) => { isBest: boolean };
+  recordDaily: (
+    totalScore: number,
+    perGame: Array<{ game: GameId; score: number }>
+  ) => { isBest: boolean; streak: number; isPractice: boolean };
   setTheme: (t: State["theme"]) => void;
   toggleTheme: () => void;
   markTutorialSeen: (game: GameId) => void;
@@ -33,6 +51,7 @@ type Actions = {
 };
 
 const MAX_HISTORY = 50;
+const MAX_DAILY_HISTORY = 60;
 
 const initial: State = {
   bestScores: {},
@@ -41,6 +60,10 @@ const initial: State = {
   lastPlayed: null,
   theme: "system",
   tutorialsSeen: {},
+  dailyResults: [],
+  dailyStreak: 0,
+  lastDailyDate: null,
+  bestDaily: 0,
 };
 
 export const useStore = create<State & Actions>()(
@@ -102,6 +125,56 @@ export const useStore = create<State & Actions>()(
           tutorialsSeen: { ...s.tutorialsSeen, [game]: true },
         })),
       resetTutorials: () => set({ tutorialsSeen: {} }),
+
+      recordDaily: (totalScore, perGame) => {
+        const today = todayKey();
+        const state = get();
+        const alreadyDoneToday = state.lastDailyDate === today;
+
+        // Practice run: doesn't affect streak, best, or replace today's entry
+        if (alreadyDoneToday) {
+          const record: DailyResult = {
+            id: crypto.randomUUID(),
+            date: today,
+            totalScore,
+            perGame,
+            completedAt: Date.now(),
+            isPractice: true,
+          };
+          set((s) => ({
+            dailyResults: [record, ...s.dailyResults].slice(0, MAX_DAILY_HISTORY),
+          }));
+          return {
+            isBest: totalScore > state.bestDaily,
+            streak: state.dailyStreak,
+            isPractice: true,
+          };
+        }
+
+        // First run today — counts for streak
+        let streak = state.dailyStreak;
+        if (state.lastDailyDate === null) streak = 1;
+        else {
+          const diff = daysBetween(state.lastDailyDate, today);
+          streak = diff === 1 ? streak + 1 : 1;
+        }
+
+        const isBest = totalScore > state.bestDaily;
+        const record: DailyResult = {
+          id: crypto.randomUUID(),
+          date: today,
+          totalScore,
+          perGame,
+          completedAt: Date.now(),
+        };
+        set((s) => ({
+          dailyResults: [record, ...s.dailyResults].slice(0, MAX_DAILY_HISTORY),
+          dailyStreak: streak,
+          lastDailyDate: today,
+          bestDaily: isBest ? totalScore : s.bestDaily,
+        }));
+        return { isBest, streak, isPractice: false };
+      },
 
       reset: () => set({ ...initial }),
     }),
