@@ -20,12 +20,15 @@ type State = {
   streak: number;
   lastPlayed: string | null; // YYYY-MM-DD
   theme: "light" | "dark" | "system";
+  tutorialsSeen: Partial<Record<GameId, boolean>>;
 };
 
 type Actions = {
   recordPlay: (game: GameId, score: number) => { isBest: boolean };
   setTheme: (t: State["theme"]) => void;
   toggleTheme: () => void;
+  markTutorialSeen: (game: GameId) => void;
+  resetTutorials: () => void;
   reset: () => void;
 };
 
@@ -37,6 +40,7 @@ const initial: State = {
   streak: 0,
   lastPlayed: null,
   theme: "system",
+  tutorialsSeen: {},
 };
 
 export const useStore = create<State & Actions>()(
@@ -92,6 +96,12 @@ export const useStore = create<State & Actions>()(
         set({ theme: next });
         applyTheme(next);
       },
+
+      markTutorialSeen: (game) =>
+        set((s) => ({
+          tutorialsSeen: { ...s.tutorialsSeen, [game]: true },
+        })),
+      resetTutorials: () => set({ tutorialsSeen: {} }),
 
       reset: () => set({ ...initial }),
     }),

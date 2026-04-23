@@ -3,7 +3,8 @@ export type GameId =
   | "memory"
   | "nback"
   | "math"
-  | "schulte";
+  | "schulte"
+  | "pond";
 
 export type GameMeta = {
   id: GameId;
@@ -78,6 +79,18 @@ export const GAMES: GameMeta[] = [
     accent: "from-emerald-400 to-teal-500",
     scoreUnit: "s",
     lowerIsBetter: true,
+  },
+  {
+    id: "pond",
+    name: "Attention Pond",
+    tagline: "Tap every fish exactly once — no doubles.",
+    description:
+      "A divided-attention drill based on the Multiple Object Tracking paradigm (Pylyshyn & Storm, 1988). Fish drift around the pond; tap each one exactly once. Tap the same fish twice and you lose points.",
+    path: "/play/pond",
+    emoji: "🐟",
+    accent: "from-cyan-400 to-emerald-500",
+    scoreUnit: "pts",
+    lowerIsBetter: false,
   },
 ];
 

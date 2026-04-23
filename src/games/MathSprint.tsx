@@ -4,10 +4,11 @@ import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
+import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
-type Phase = "intro" | "countdown" | "playing" | "done";
+type Phase = "intro" | "tutorial" | "countdown" | "playing" | "done";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -52,6 +53,8 @@ function makeProblem(): Problem {
 export default function MathSprint() {
   const game = getGame("math");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [problem, setProblem] = useState<Problem>(makeProblem);
@@ -63,62 +66,69 @@ export default function MathSprint() {
   const [isBest, setIsBest] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
 
-  const timerRef = useRef<number | null>(null);
+  const deadlineRef = useRef<number>(0);
+  const tickRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const endedRef = useRef(false);
+  const correctRef = useRef(0);
 
-  const clearTimer = () => {
-    if (timerRef.current !== null) {
-      window.clearInterval(timerRef.current);
-      timerRef.current = null;
+  useEffect(() => {
+    correctRef.current = correct;
+  }, [correct]);
+
+  const stopTick = () => {
+    if (tickRef.current !== null) {
+      window.clearInterval(tickRef.current);
+      tickRef.current = null;
     }
   };
 
-  const end = useCallback(
-    (finalCorrect: number) => {
-      if (endedRef.current) return;
-      endedRef.current = true;
-      clearTimer();
-      const { isBest: best } = recordPlay("math", finalCorrect);
-      setFinalScore(finalCorrect);
-      setIsBest(best);
-      setPhase("done");
-    },
-    [recordPlay]
-  );
+  useEffect(() => () => stopTick(), []);
 
-  useEffect(() => () => clearTimer(), []);
+  const end = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    stopTick();
+    const finalCorrect = correctRef.current;
+    const { isBest: best } = recordPlay("math", finalCorrect);
+    setFinalScore(finalCorrect);
+    setIsBest(best);
+    setPhase("done");
+  }, [recordPlay]);
+
+  const computeTimeLeft = () => {
+    const ms = deadlineRef.current - Date.now();
+    return Math.max(0, Math.ceil(ms / 1000));
+  };
 
   const begin = () => {
     setCorrect(0);
+    correctRef.current = 0;
     setWrong(0);
     setInput("");
     setTimeLeft(DURATION_S);
     setProblem(makeProblem());
     endedRef.current = false;
+    setPhase(tutorialSeen ? "countdown" : "tutorial");
+  };
+
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
     setPhase("countdown");
   };
 
   const startPlay = () => {
     setPhase("playing");
-    clearTimer();
-    timerRef.current = window.setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          end(correctRef.current);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    // focus the input after mount
+    deadlineRef.current = Date.now() + DURATION_S * 1000;
+    setTimeLeft(DURATION_S);
+    stopTick();
+    tickRef.current = window.setInterval(() => {
+      const left = computeTimeLeft();
+      setTimeLeft(left);
+      if (left <= 0) end();
+    }, 200);
     window.setTimeout(() => inputRef.current?.focus(), 50);
   };
-
-  const correctRef = useRef(0);
-  useEffect(() => {
-    correctRef.current = correct;
-  }, [correct]);
 
   const submit = () => {
     if (phase !== "playing") return;
@@ -133,11 +143,11 @@ export default function MathSprint() {
       setWrong((w) => w + 1);
       setFlash("bad");
       setInput("");
-      setTimeLeft((t) => {
-        const nt = Math.max(0, t - WRONG_PENALTY_S);
-        if (nt === 0) end(correctRef.current);
-        return nt;
-      });
+      // Deadline-based penalty: move the deadline earlier.
+      deadlineRef.current -= WRONG_PENALTY_S * 1000;
+      const left = computeTimeLeft();
+      setTimeLeft(left);
+      if (left <= 0) end();
     }
     window.setTimeout(() => setFlash(null), 260);
   };
@@ -147,6 +157,45 @@ export default function MathSprint() {
     submit();
   };
 
+  const tutorialSteps: TutorialStep[] = [
+    {
+      caption: "You'll see a simple arithmetic problem.",
+      stage: (
+        <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          <p className="text-5xl font-black text-slate-900 dark:text-white">
+            12 × 4 = ?
+          </p>
+        </div>
+      ),
+    },
+    {
+      caption: "Type the answer and press Enter.",
+      stage: (
+        <div className="mx-auto max-w-sm space-y-2">
+          <div className="flex items-center justify-center rounded-2xl bg-emerald-50 p-4 text-3xl font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800">
+            48 ✓
+          </div>
+          <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+            Correct → next problem
+          </p>
+        </div>
+      ),
+    },
+    {
+      caption: `Wrong answer costs ${WRONG_PENALTY_S} seconds. Use the full ${DURATION_S} seconds wisely.`,
+      stage: (
+        <div className="mx-auto max-w-sm space-y-2">
+          <div className="flex items-center justify-center rounded-2xl bg-rose-50 p-4 text-3xl font-bold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-800">
+            45 ✗ −{WRONG_PENALTY_S}s
+          </div>
+          <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+            Score = number of correct answers
+          </p>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <GameShell game={game}>
       {phase === "intro" && (
@@ -154,6 +203,10 @@ export default function MathSprint() {
           You have {DURATION_S} seconds. Solve each problem and press enter.
           Wrong answers cost {WRONG_PENALTY_S}s.
         </Instructions>
+      )}
+
+      {phase === "tutorial" && (
+        <Tutorial steps={tutorialSteps} onDone={afterTutorial} />
       )}
 
       {phase === "countdown" && <Countdown onDone={startPlay} />}

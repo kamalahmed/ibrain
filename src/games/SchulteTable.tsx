@@ -4,10 +4,11 @@ import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
+import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
-type Phase = "intro" | "countdown" | "playing" | "done";
+type Phase = "intro" | "tutorial" | "countdown" | "playing" | "done";
 
 const SIZE = 5;
 const TOTAL = SIZE * SIZE;
@@ -24,6 +25,8 @@ function shuffled(): number[] {
 export default function SchulteTable() {
   const game = getGame("schulte");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [grid, setGrid] = useState<number[]>(() => shuffled());
@@ -49,8 +52,29 @@ export default function SchulteTable() {
     setGrid(shuffled());
     setNext(1);
     setElapsed(0);
+    setPhase(tutorialSeen ? "countdown" : "tutorial");
+  };
+
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
     setPhase("countdown");
   };
+
+  const tutorialSteps: TutorialStep[] = [
+    {
+      caption: "Numbers 1 to 25 are shuffled into a 5×5 grid.",
+      stage: <SchulteDemo stage="all" />,
+    },
+    {
+      caption: "Tap 1 first, then 2, then 3 — in order.",
+      stage: <SchulteDemo stage="inProgress" />,
+    },
+    {
+      caption:
+        "Try to fixate in the center and spot numbers with your peripheral vision. Faster = better.",
+      stage: <SchulteDemo stage="center" />,
+    },
+  ];
 
   const startPlay = () => {
     setStartedAt(Date.now());
@@ -86,6 +110,10 @@ export default function SchulteTable() {
           Tap the numbers in order from 1 to {TOTAL}. Try to fixate in the
           center and find numbers with your peripheral vision.
         </Instructions>
+      )}
+
+      {phase === "tutorial" && (
+        <Tutorial steps={tutorialSteps} onDone={afterTutorial} />
       )}
 
       {phase === "countdown" && <Countdown onDone={startPlay} />}
@@ -141,5 +169,40 @@ export default function SchulteTable() {
         />
       )}
     </GameShell>
+  );
+}
+
+function SchulteDemo({
+  stage,
+}: {
+  stage: "all" | "inProgress" | "center";
+}) {
+  const grid = [7, 3, 14, 2, 21, 11, 5, 18, 9, 1, 23, 15, 13, 6, 19, 4, 20, 8, 17, 22, 12, 25, 10, 24, 16];
+  const next = stage === "inProgress" ? 4 : 1;
+  return (
+    <div className="mx-auto grid aspect-square w-full max-w-xs grid-cols-5 gap-1 rounded-2xl bg-slate-100 p-2 dark:bg-slate-800">
+      {grid.map((n, i) => {
+        const done = stage === "inProgress" && n < next;
+        const centerHi =
+          stage === "center" && (i === 12 || i === 7 || i === 17 || i === 11 || i === 13);
+        return (
+          <div
+            key={i}
+            className={
+              "grid aspect-square place-items-center rounded-md text-sm font-bold sm:text-base " +
+              (done
+                ? "bg-slate-300 text-slate-400 dark:bg-slate-700 dark:text-slate-500"
+                : centerHi
+                ? "bg-brand-500 text-white"
+                : stage === "center" && i === 12
+                ? "bg-brand-600 text-white ring-2 ring-brand-300"
+                : "bg-white text-slate-900 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-white dark:ring-slate-700")
+            }
+          >
+            {n}
+          </div>
+        );
+      })}
+    </div>
   );
 }

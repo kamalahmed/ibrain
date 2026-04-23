@@ -2,16 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { ResultsScreen } from "@/components/ResultsScreen";
+import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
-type Phase = "intro" | "waiting" | "ready" | "tooSoon" | "done";
+type Phase = "intro" | "tutorial" | "waiting" | "ready" | "tooSoon" | "done";
 
 const TRIALS = 5;
 
 export default function ReactionTime() {
   const game = getGame("reaction");
   const recordPlay = useStore((s) => s.recordPlay);
+  const tutorialSeen = useStore((s) => s.tutorialsSeen[game.id]);
+  const markTutorialSeen = useStore((s) => s.markTutorialSeen);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [trial, setTrial] = useState(0);
@@ -44,8 +47,41 @@ export default function ReactionTime() {
     setTrial(0);
     setTimes([]);
     setLastMs(null);
+    if (tutorialSeen) armNextTrial();
+    else setPhase("tutorial");
+  };
+
+  const afterTutorial = () => {
+    markTutorialSeen(game.id);
     armNextTrial();
   };
+
+  const tutorialSteps: TutorialStep[] = [
+    {
+      caption: "The screen starts dark. Wait — don't tap yet.",
+      stage: (
+        <div className="grid min-h-[30vh] place-items-center rounded-2xl bg-slate-800 text-white">
+          <span className="text-sm opacity-80">Wait for green…</span>
+        </div>
+      ),
+    },
+    {
+      caption: "When it turns green, tap immediately.",
+      stage: (
+        <div className="grid min-h-[30vh] place-items-center rounded-2xl bg-emerald-500 text-2xl font-black text-white">
+          Tap!
+        </div>
+      ),
+    },
+    {
+      caption: `Too early? No worries — that trial restarts. You'll do ${TRIALS} trials; lowest average wins.`,
+      stage: (
+        <div className="grid min-h-[30vh] place-items-center rounded-2xl bg-rose-500 text-lg font-bold text-white">
+          Too soon — tap to retry
+        </div>
+      ),
+    },
+  ];
 
   const finishTrial = (reaction: number) => {
     const next = [...times, reaction];
@@ -91,6 +127,10 @@ export default function ReactionTime() {
           , then tap as quickly as you can. Tapping too early will restart that
           trial.
         </Instructions>
+      )}
+
+      {phase === "tutorial" && (
+        <Tutorial steps={tutorialSteps} onDone={afterTutorial} />
       )}
 
       {(phase === "waiting" || phase === "ready" || phase === "tooSoon") && (
