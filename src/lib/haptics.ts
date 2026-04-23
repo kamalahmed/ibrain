@@ -1,6 +1,9 @@
+import { useStore } from "@/store/useStore";
+
 export function tap(ms: number | number[] = 10) {
   if (typeof navigator === "undefined") return;
   if (!("vibrate" in navigator)) return;
+  if (!useStore.getState().hapticsEnabled) return;
   try {
     navigator.vibrate(ms);
   } catch {

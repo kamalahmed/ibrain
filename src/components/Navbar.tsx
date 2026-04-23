@@ -53,6 +53,18 @@ export function Navbar() {
           >
             Dashboard
           </NavLink>
+          <NavLink
+            to="/settings"
+            aria-label="Settings"
+            className={({ isActive }) =>
+              "grid h-10 w-10 place-items-center rounded-xl transition-colors " +
+              (isActive
+                ? "bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-200"
+                : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800")
+            }
+          >
+            <span aria-hidden>⚙️</span>
+          </NavLink>
           <button
             type="button"
             onClick={toggleTheme}

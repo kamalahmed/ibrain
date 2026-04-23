@@ -24,6 +24,8 @@ export type DailyResult = {
 
 type BestByGame = Partial<Record<GameId, number>>;
 
+export type ReducedMotionSetting = "auto" | "on" | "off";
+
 type State = {
   bestScores: BestByGame;
   history: PlayRecord[]; // most recent first
@@ -35,6 +37,8 @@ type State = {
   dailyStreak: number;
   lastDailyDate: string | null; // YYYY-MM-DD of the last non-practice daily
   bestDaily: number;
+  reducedMotion: ReducedMotionSetting;
+  hapticsEnabled: boolean;
 };
 
 type Actions = {
@@ -47,6 +51,10 @@ type Actions = {
   toggleTheme: () => void;
   markTutorialSeen: (game: GameId) => void;
   resetTutorials: () => void;
+  setReducedMotion: (v: ReducedMotionSetting) => void;
+  setHapticsEnabled: (b: boolean) => void;
+  /** Clear play history, bests, daily state. Keeps tutorialsSeen + settings. */
+  resetHistory: () => void;
   reset: () => void;
 };
 
@@ -64,6 +72,8 @@ const initial: State = {
   dailyStreak: 0,
   lastDailyDate: null,
   bestDaily: 0,
+  reducedMotion: "auto",
+  hapticsEnabled: true,
 };
 
 export const useStore = create<State & Actions>()(
@@ -125,6 +135,21 @@ export const useStore = create<State & Actions>()(
           tutorialsSeen: { ...s.tutorialsSeen, [game]: true },
         })),
       resetTutorials: () => set({ tutorialsSeen: {} }),
+
+      setReducedMotion: (v) => set({ reducedMotion: v }),
+      setHapticsEnabled: (b) => set({ hapticsEnabled: b }),
+
+      resetHistory: () =>
+        set({
+          bestScores: {},
+          history: [],
+          streak: 0,
+          lastPlayed: null,
+          dailyResults: [],
+          dailyStreak: 0,
+          lastDailyDate: null,
+          bestDaily: 0,
+        }),
 
       recordDaily: (totalScore, perGame) => {
         const today = todayKey();
