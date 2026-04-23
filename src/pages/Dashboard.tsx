@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
 import { GAMES } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import { selectBrainScore, useStore } from "@/store/useStore";
+import { todayKey } from "@/lib/date";
 
 export default function Dashboard() {
   const bestScores = useStore((s) => s.bestScores);
@@ -10,6 +12,10 @@ export default function Dashboard() {
   const brainScore = useStore(selectBrainScore);
   const history = useStore((s) => s.history);
   const resetTutorials = useStore((s) => s.resetTutorials);
+  const dailyStreak = useStore((s) => s.dailyStreak);
+  const bestDaily = useStore((s) => s.bestDaily);
+  const lastDailyDate = useStore((s) => s.lastDailyDate);
+  const doneToday = lastDailyDate === todayKey();
   const recent = history.slice(0, 5);
   const totalPlayed = history.length;
 
@@ -34,13 +40,52 @@ export default function Dashboard() {
         />
       </section>
 
+      <section aria-label="Daily challenge" className="mt-8">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-accent-blue to-accent-teal p-5 text-white shadow-soft sm:p-6"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/80">
+                <span aria-hidden>🗓️</span> Daily Challenge
+              </div>
+              <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">
+                {doneToday ? "You trained today ✓" : "Today's training is waiting"}
+              </h2>
+              <p className="mt-1 max-w-prose text-sm text-white/90">
+                One short run of each of the 6 games, back-to-back. ~5 minutes.
+                Keeps your streak alive.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
+                  Streak <strong>{dailyStreak}</strong> {dailyStreak === 1 ? "day" : "days"}
+                </span>
+                <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
+                  Best <strong>{bestDaily}</strong> pts
+                </span>
+              </div>
+            </div>
+            <Link
+              to="/daily"
+              className="self-start rounded-xl bg-white px-4 py-2 text-sm font-bold text-brand-700 shadow-soft hover:bg-brand-50 sm:self-center"
+              data-testid="daily-card-cta"
+            >
+              {doneToday ? "Practice →" : "Start →"}
+            </Link>
+          </div>
+        </motion.div>
+      </section>
+
       <section aria-label="Games" className="mt-8">
         <div className="mb-4 flex items-end justify-between">
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            Today's workout
+            Train one game
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Pick any game to begin.
+            Full 5-level session for any game.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
