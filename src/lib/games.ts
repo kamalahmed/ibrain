@@ -86,9 +86,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "reaction",
     name: "Reaction Time",
-    tagline: "Four levels from simple tap to shape discrimination.",
+    tagline: "Four levels from a single feature to full conjunction search.",
     description:
-      "Four reflex levels in one 3-minute session. Level 1 is a pure reaction test; later levels add go/no-go and shape discrimination — only tap on a green circle.",
+      "Four levels of go/no-go visual search in one 3-minute session. Tap the option matching the active rule, or hold when none match — but the rule keeps switching mid-level, and later it pins down two or three features at once (the big red triangle). Fast, clean streaks build a combo multiplier.",
     path: "/play/reaction",
     emoji: "⚡️",
     accent: "from-amber-400 to-pink-500",
