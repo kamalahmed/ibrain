@@ -98,15 +98,17 @@ type Level = {
   id: 1 | 2 | 3 | 4 | 5;
   name: string;
   count: number;
-  seconds: number;
+  /** Soft target for the speed bonus — NOT a deadline; the only clock is the
+   *  5-minute session timer. */
+  targetSeconds: number;
 };
 
 const LEVELS: Level[] = [
-  { id: 1, name: "3 fish", count: 3, seconds: 30 },
-  { id: 2, name: "4 fish", count: 4, seconds: 35 },
-  { id: 3, name: "5 fish", count: 5, seconds: 40 },
-  { id: 4, name: "6 fish", count: 6, seconds: 45 },
-  { id: 5, name: "7 fish", count: 7, seconds: 50 },
+  { id: 1, name: "3 fish", count: 3, targetSeconds: 30 },
+  { id: 2, name: "4 fish", count: 4, targetSeconds: 35 },
+  { id: 3, name: "5 fish", count: 5, targetSeconds: 40 },
+  { id: 4, name: "6 fish", count: 6, targetSeconds: 45 },
+  { id: 5, name: "7 fish", count: 7, targetSeconds: 50 },
 ];
 
 /** Fish shrink as later levels add more of them, so a crowded pond still fits. */
@@ -224,7 +226,6 @@ export default function AttentionPond() {
   const [fish, setFish] = useState<Fish[]>([]);
   const [lilies, setLilies] = useState<LilyPad[]>([]);
   const [reeds, setReeds] = useState<Reed[]>([]);
-  const [levelTimeLeft, setLevelTimeLeft] = useState(0);
   const [sessionTimeLeft, setSessionTimeLeft] = useState(SESSION_SECONDS);
   const [score, setScore] = useState(0);
   const [doubles, setDoubles] = useState(0);
@@ -250,7 +251,7 @@ export default function AttentionPond() {
   const grainIdRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
-  const deadlineRef = useRef(0); // per-level deadline (performance.now base)
+  const levelStartedAtRef = useRef(0); // performance.now() at level start
   const sessionDeadlineRef = useRef(0); // session deadline (Date.now base)
   const sessionTickRef = useRef<number | null>(null);
   const endedRef = useRef(false);
@@ -293,23 +294,24 @@ export default function AttentionPond() {
     [recordPlay]
   );
 
+  // Called only when every fish in the level has been fed — the level never
+  // advances on its own. The 5-minute session timer is the only clock.
   const advanceLevel = useCallback(
-    (cause: "cleared" | "timeout") => {
+    () => {
       stopLoop();
-      if (cause === "timeout") {
-        // level failed — session ends with accumulated score
-        finishGame(false);
-        return;
-      }
-      // level cleared — speed bonus based on remaining level time
-      const remainingMs = Math.max(0, deadlineRef.current - performance.now());
-      const speedBonus = Math.round((remainingMs / 1000) * 10);
+      const lvl = LEVELS[levelIdx];
+      // speed bonus: clearing well under the level's soft target pays off
+      const elapsedS =
+        (performance.now() - levelStartedAtRef.current) / 1000;
+      const speedBonus = Math.max(
+        0,
+        Math.round((lvl.targetSeconds - elapsedS) * 10)
+      );
       const clearPts = LEVEL_CLEAR_BONUS + speedBonus;
       scoreRef.current += clearPts;
       levelPointsRef.current += clearPts;
       setScore(scoreRef.current);
       clearedRef.current += 1;
-      const lvl = LEVELS[levelIdx];
       setLastCleared(lvl.id);
       setLastLevelScore(levelPointsRef.current);
       const nextIdx = levelIdx + 1;
@@ -334,8 +336,7 @@ export default function AttentionPond() {
     setReeds(rds);
     fishRef.current = f;
     levelPointsRef.current = 0;
-    setLevelTimeLeft(lvl.seconds);
-    deadlineRef.current = performance.now() + lvl.seconds * 1000;
+    levelStartedAtRef.current = performance.now();
     lastTickRef.current = performance.now();
     bucketReadyRef.current = true;
     setBucketReady(true);
@@ -422,21 +423,12 @@ export default function AttentionPond() {
         setGrains(grainsLeft);
       }
 
-      // --- per-level timer ---
-      const remainingMs = deadlineRef.current - now;
-      setLevelTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
-      if (remainingMs <= 0) {
-        stopLoop();
-        advanceLevel("timeout");
-        return;
-      }
-
       rafRef.current = requestAnimationFrame(loop);
     };
 
     rafRef.current = requestAnimationFrame(loop);
     return () => stopLoop();
-  }, [phase, advanceLevel]);
+  }, [phase]);
 
   const addPing = (x: number, y: number, text: string, color: "ok" | "bad") => {
     const ping: Ping = {
@@ -505,7 +497,7 @@ export default function AttentionPond() {
     fishRef.current = next;
     setFish(next);
     if (next.every((f) => f.fed)) {
-      advanceLevel("cleared");
+      advanceLevel();
     }
   };
 
@@ -611,18 +603,9 @@ export default function AttentionPond() {
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>
-              {LEVELS[levelIdx].name} · fed {fedCount} / {fish.length}
-            </span>
-            <span
-              className={
-                levelTimeLeft <= 5
-                  ? "font-bold text-rose-600 dark:text-rose-300"
-                  : ""
-              }
-              data-testid="level-timer"
-            >
-              level {levelTimeLeft}s
+            <span>{LEVELS[levelIdx].name}</span>
+            <span data-testid="fed-progress">
+              fed {fedCount} / {fish.length}
             </span>
           </div>
 
