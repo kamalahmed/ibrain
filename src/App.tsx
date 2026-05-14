@@ -87,7 +87,11 @@ export default function App() {
         </div>
         <footer className="border-t border-slate-200/70 bg-white/40 py-6 text-center text-xs text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500">
           <p>
-            Built with React + Vite · All progress is stored locally in your browser.
+            Built with love by Kamal Ahmed · © 2026 Kamal Ahmed. All rights
+            reserved.
+          </p>
+          <p className="mt-1">
+            Your progress is stored locally in your browser.
           </p>
         </footer>
       </div>
