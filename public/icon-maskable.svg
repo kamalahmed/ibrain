@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7e4dff"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed background: the OS applies the mask shape (circle / squircle). -->
+  <rect width="64" height="64" fill="url(#g)"/>
+  <!-- Brain kept within the central safe zone so masks don't clip it. -->
+  <g transform="translate(32 32) scale(0.78) translate(-33 -31.5)">
+    <path d="M20 22c0-4 3-7 7-7 2 0 4 1 5 3 1-2 3-3 5-3 4 0 7 3 7 7 0 2-1 4-2 5 2 1 3 3 3 6 0 4-3 7-7 7-2 0-4-1-5-3v7h-2v-7c-1 2-3 3-5 3-4 0-7-3-7-7 0-3 1-5 3-6-1-1-2-3-2-5z" fill="#fff" fill-opacity=".95"/>
+  </g>
+</svg>

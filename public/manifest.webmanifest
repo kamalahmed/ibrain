@@ -1,0 +1,26 @@
+{
+  "name": "iBrain · Brain Training",
+  "short_name": "iBrain",
+  "description": "Quick brain-training games for reaction time, memory, attention, problem solving and flexibility. Works offline.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#6a34f5",
+  "categories": ["games", "education", "health"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
