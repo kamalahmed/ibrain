@@ -253,9 +253,13 @@ export type DomainScore = {
 /**
  * Per-cognitive-area score: average of normalized bests for the games that
  * make up each domain. Domains with no plays yet report score 0.
+ *
+ * NOTE: this builds a fresh object, so it must NOT be passed directly to
+ * `useStore` as a selector (zustand would see a new reference every render
+ * and re-render forever). Call it from a `useMemo` keyed on `bestScores`.
  */
-export function selectDomainScores(
-  state: State
+export function computeDomainScores(
+  bestScores: BestByGame
 ): Record<CognitiveDomain, DomainScore> {
   const acc = {} as Record<
     CognitiveDomain,
@@ -264,7 +268,7 @@ export function selectDomainScores(
   for (const g of GAMES) {
     const bucket = (acc[g.domain] ??= { sum: 0, played: 0, total: 0 });
     bucket.total += 1;
-    const best = state.bestScores[g.id];
+    const best = bestScores[g.id];
     if (typeof best === "number") {
       bucket.sum += normalizeScore(g.id, best);
       bucket.played += 1;
