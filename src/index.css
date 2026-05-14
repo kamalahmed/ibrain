@@ -52,6 +52,14 @@
     padding-left: max(1rem, env(safe-area-inset-left));
     padding-right: max(1rem, env(safe-area-inset-right));
   }
+  /* Keep content clear of the notch / Dynamic Island and the home indicator
+     when running as an installed PWA (viewport-fit=cover is edge-to-edge). */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
   .no-select {
     -webkit-user-select: none;
     user-select: none;

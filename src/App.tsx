@@ -85,7 +85,7 @@ export default function App() {
         <div className="flex-1">
           <AnimatedRoutes />
         </div>
-        <footer className="border-t border-slate-200/70 bg-white/40 py-6 text-center text-xs text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500">
+        <footer className="safe-bottom border-t border-slate-200/70 bg-white/40 pt-6 text-center text-xs text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500">
           <p>
             Built with love by Kamal Ahmed · © 2026 Kamal Ahmed. All rights
             reserved.

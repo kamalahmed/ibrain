@@ -13,7 +13,7 @@ export function Navbar() {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200/60 bg-white/70 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/70">
+    <header className="safe-top sticky top-0 z-30 border-b border-slate-200/60 bg-white/70 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/70">
       <nav
         aria-label="Primary"
         className="mx-auto flex max-w-5xl items-center justify-between gap-3 safe-px py-3"
