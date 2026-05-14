@@ -25,6 +25,17 @@ const PING_LIFE_MS = 600;
 const SESSION_SECONDS = 300;
 const LEVEL_CLEAR_BONUS = 50;
 
+/** Body palette per level — the fish change colour as the ponds get harder. */
+const LEVEL_FISH: { light: string; mid: string; dark: string }[] = [
+  { light: "#ffe2c0", mid: "#ff9d4d", dark: "#e8621a" }, // coral
+  { light: "#ffd0e8", mid: "#ff6fb0", dark: "#d83a86" }, // pink
+  { light: "#ddc8ff", mid: "#a87dff", dark: "#6a34f5" }, // violet
+  { light: "#fff0b0", mid: "#ffcb3d", dark: "#e09b00" }, // amber
+  { light: "#ffc0c0", mid: "#ff6b6b", dark: "#dd2222" }, // red
+];
+
+const clampLevel = (i: number) => Math.max(0, Math.min(LEVEL_FISH.length - 1, i));
+
 type Fish = {
   id: number;
   x: number;
@@ -583,6 +594,7 @@ export default function AttentionPond() {
                 lilies={lilies}
                 reeds={reeds}
                 pings={pings}
+                levelIdx={levelIdx}
                 onTapFish={tapFish}
                 showOverlay={false}
               />
@@ -633,10 +645,20 @@ function PondDefs({ idPrefix }: { idPrefix: string }) {
         <stop offset="0%" stopColor="#eafff8" stopOpacity="0.9" />
         <stop offset="100%" stopColor="#eafff8" stopOpacity="0" />
       </radialGradient>
-      <linearGradient id={`${idPrefix}FishBody`} x1="0" y1="-1" x2="0" y2="1">
-        <stop offset="0%" stopColor="#cbb6ff" />
-        <stop offset="100%" stopColor="#7e4dff" />
-      </linearGradient>
+      {LEVEL_FISH.map((c, i) => (
+        <linearGradient
+          key={i}
+          id={`${idPrefix}Fish${i}`}
+          x1="0"
+          y1="-1"
+          x2="0"
+          y2="1"
+        >
+          <stop offset="0%" stopColor={c.light} />
+          <stop offset="55%" stopColor={c.mid} />
+          <stop offset="100%" stopColor={c.dark} />
+        </linearGradient>
+      ))}
       <radialGradient id={`${idPrefix}LilyFill`} cx="0.35" cy="0.32" r="0.85">
         <stop offset="0%" stopColor="#7ee0bd" />
         <stop offset="55%" stopColor="#2fb48f" />
@@ -664,6 +686,15 @@ function PondDefs({ idPrefix }: { idPrefix: string }) {
       >
         <feGaussianBlur stdDeviation="2.4" />
       </filter>
+      <filter
+        id={`${idPrefix}FishShade`}
+        x="-40%"
+        y="-40%"
+        width="180%"
+        height="180%"
+      >
+        <feGaussianBlur stdDeviation="0.7" />
+      </filter>
     </defs>
   );
 }
@@ -675,6 +706,7 @@ function Pond({
   lilies,
   reeds,
   pings,
+  levelIdx,
   onTapFish,
   showOverlay,
 }: {
@@ -682,9 +714,11 @@ function Pond({
   lilies: LilyPad[];
   reeds: Reed[];
   pings: Ping[];
+  levelIdx: number;
   onTapFish: (id: number, e: React.PointerEvent) => void;
   showOverlay: boolean;
 }) {
+  const fishLevel = clampLevel(levelIdx);
   return (
     <div
       className="relative mx-auto aspect-square w-full max-w-xl overflow-hidden rounded-3xl ring-1 ring-emerald-900/30 shadow-soft dark:ring-emerald-950"
@@ -717,7 +751,13 @@ function Pond({
         {/* fish layer */}
         <g>
           {fish.map((f) => (
-            <FishGlyph key={f.id} fish={f} onTap={onTapFish} idPrefix="pond" />
+            <FishGlyph
+              key={f.id}
+              fish={f}
+              onTap={onTapFish}
+              idPrefix="pond"
+              level={fishLevel}
+            />
           ))}
         </g>
 
@@ -878,29 +918,156 @@ function ReedClump({ reed, idPrefix }: { reed: Reed; idPrefix: string }) {
 
 /* ---------------- Fish ---------------- */
 
+// All paths are drawn in fish-local space: centred at (0,0), nose pointing +x,
+// `s` is the fish size. The body and tail share the joint at (-1.12s, 0).
+function fishBodyPath(s: number): string {
+  return (
+    `M ${1.4 * s} 0 ` +
+    `C ${1.05 * s} ${-0.58 * s} ${0.2 * s} ${-0.72 * s} ${-0.45 * s} ${-0.55 * s} ` +
+    `C ${-0.92 * s} ${-0.42 * s} ${-1.1 * s} ${-0.2 * s} ${-1.12 * s} 0 ` +
+    `C ${-1.1 * s} ${0.2 * s} ${-0.92 * s} ${0.42 * s} ${-0.45 * s} ${0.55 * s} ` +
+    `C ${0.2 * s} ${0.72 * s} ${1.05 * s} ${0.58 * s} ${1.4 * s} 0 Z`
+  );
+}
+// Forked caudal fin. Its bounding box ends exactly at the joint (right edge,
+// vertically centred) so a transform-origin of "100% 50%" pivots it cleanly.
+function fishTailPath(s: number): string {
+  return (
+    `M ${-1.12 * s} 0 ` +
+    `C ${-1.42 * s} ${-0.22 * s} ${-1.72 * s} ${-0.5 * s} ${-1.98 * s} ${-0.9 * s} ` +
+    `C ${-1.76 * s} ${-0.38 * s} ${-1.6 * s} ${-0.16 * s} ${-1.58 * s} 0 ` +
+    `C ${-1.6 * s} ${0.16 * s} ${-1.76 * s} ${0.38 * s} ${-1.98 * s} ${0.9 * s} ` +
+    `C ${-1.72 * s} ${0.5 * s} ${-1.42 * s} ${0.22 * s} ${-1.12 * s} 0 Z`
+  );
+}
+function fishDorsalPath(s: number): string {
+  return (
+    `M ${-0.35 * s} ${-0.5 * s} ` +
+    `Q ${-0.05 * s} ${-1.08 * s} ${0.45 * s} ${-0.46 * s} ` +
+    `Q ${0.05 * s} ${-0.52 * s} ${-0.35 * s} ${-0.5 * s} Z`
+  );
+}
+// Pectoral fin. Bounding box top-left corner sits at the attach point, so a
+// transform-origin of "0% 0%" pivots the flap from where it meets the body.
+function fishPectoralPath(s: number): string {
+  return (
+    `M 0 ${0.28 * s} ` +
+    `Q ${0.6 * s} ${0.5 * s} ${0.52 * s} ${0.95 * s} ` +
+    `Q ${0.22 * s} ${0.6 * s} 0 ${0.28 * s} Z`
+  );
+}
+
+const pivot = (origin: string): React.CSSProperties =>
+  ({ transformOrigin: origin, transformBox: "fill-box" } as React.CSSProperties);
+
+/** The fish itself — body, fins, eye — with a wagging tail and flapping fin. */
+function FishArt({
+  size,
+  level,
+  idPrefix,
+  flip,
+}: {
+  size: number;
+  level: number;
+  idPrefix: string;
+  flip: number;
+}) {
+  const fin = LEVEL_FISH[level].dark;
+  return (
+    <g transform={`scale(1 ${flip})`}>
+      {/* caudal (tail) fin — wags as it swims */}
+      <motion.path
+        d={fishTailPath(size)}
+        fill={fin}
+        style={pivot("100% 50%")}
+        animate={{ rotate: [-15, 15, -15] }}
+        transition={{ duration: 0.55, repeat: Infinity, ease: "easeInOut" }}
+      />
+      {/* dorsal fin (tucks into the body) */}
+      <path d={fishDorsalPath(size)} fill={fin} opacity="0.92" />
+      {/* body */}
+      <path d={fishBodyPath(size)} fill={`url(#${idPrefix}Fish${level})`} />
+      {/* back highlight */}
+      <path
+        d={`M ${-0.5 * size} ${-0.34 * size} Q ${0.3 * size} ${-0.62 * size} ${1.05 * size} ${-0.12 * size}`}
+        stroke="#ffffff"
+        strokeWidth={size * 0.1}
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.45"
+      />
+      {/* pectoral fin — gentle flap */}
+      <motion.path
+        d={fishPectoralPath(size)}
+        fill={fin}
+        opacity="0.85"
+        style={pivot("0% 0%")}
+        animate={{ rotate: [-8, 16, -8] }}
+        transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+      />
+      {/* gill line */}
+      <path
+        d={`M ${0.42 * size} ${-0.32 * size} Q ${0.3 * size} 0 ${0.42 * size} ${0.32 * size}`}
+        stroke={fin}
+        strokeWidth={size * 0.07}
+        fill="none"
+        opacity="0.55"
+      />
+      {/* eye */}
+      <circle cx={size * 0.82} cy={-size * 0.16} r={size * 0.2} fill="#ffffff" />
+      <circle cx={size * 0.88} cy={-size * 0.16} r={size * 0.1} fill="#0f172a" />
+    </g>
+  );
+}
+
+/** Fish-shaped (not circular) cast shadow on the water below the fish. */
+function FishShadow({
+  size,
+  idPrefix,
+  flip,
+}: {
+  size: number;
+  idPrefix: string;
+  flip: number;
+}) {
+  return (
+    <g
+      transform={`scale(1.05 ${1.05 * flip})`}
+      fill="#06342a"
+      opacity="0.26"
+      filter={`url(#${idPrefix}FishShade)`}
+    >
+      <path d={fishTailPath(size)} />
+      <path d={fishBodyPath(size)} />
+      <path d={fishDorsalPath(size)} />
+    </g>
+  );
+}
+
 function FishGlyph({
   fish,
   onTap,
   idPrefix,
+  level,
 }: {
   fish: Fish;
   onTap: (id: number, e: React.PointerEvent) => void;
   idPrefix: string;
+  level: number;
 }) {
   const { x, y, size, rot } = fish;
   const deg = (rot * 180) / Math.PI;
+  // Keep the fish upright when it swims leftwards instead of going belly-up.
+  const flip = Math.cos(rot) < 0 ? -1 : 1;
   return (
     <g aria-label="Fish">
-      {/* soft cast shadow on the water, slightly offset down-right */}
-      <ellipse
-        cx={x + 1.4}
-        cy={y + 1.8}
-        rx={size * 1.5}
-        ry={size * 0.85}
-        fill="#06342a"
-        opacity="0.28"
+      {/* fish-shaped cast shadow, offset down-right onto the water */}
+      <g
+        transform={`translate(${x + 1.7} ${y + 2.4}) rotate(${deg})`}
         pointerEvents="none"
-      />
+      >
+        <FishShadow size={size} idPrefix={idPrefix} flip={flip} />
+      </g>
       <g
         data-testid="fish"
         data-fed={fish.fed ? "1" : "0"}
@@ -909,42 +1076,8 @@ function FishGlyph({
         onPointerDown={(e) => onTap(fish.id, e)}
       >
         {/* enlarged invisible hit target */}
-        <circle r={size * 1.6} fill="transparent" />
-        {/* triangular tail */}
-        <polygon
-          points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
-          fill="#7e4dff"
-        />
-        {/* teardrop body — ellipse pinched toward the tail */}
-        <path
-          d={`
-            M ${size * 1.35} 0
-            Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
-            Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
-            Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
-            Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
-            Z
-          `}
-          fill={`url(#${idPrefix}FishBody)`}
-        />
-        {/* dorsal highlight */}
-        <path
-          d={`M ${-size * 0.6} ${-size * 0.34} Q ${size * 0.2} ${-size * 0.66} ${size * 0.95} ${-size * 0.18}`}
-          stroke="#ffffff"
-          strokeWidth={size * 0.12}
-          strokeLinecap="round"
-          fill="none"
-          opacity="0.4"
-        />
-        {/* side fin */}
-        <path
-          d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
-          fill="#5925d6"
-          opacity="0.7"
-        />
-        {/* eye */}
-        <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
-        <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
+        <circle r={size * 1.7} fill="transparent" />
+        <FishArt size={size} level={level} idPrefix={idPrefix} flip={flip} />
       </g>
     </g>
   );
@@ -1194,6 +1327,10 @@ function DemoPond({
       : mode === "identical"
       ? identical
       : lily;
+  // One colour per demo step for variety — but "identical" must keep every
+  // fish the same colour, since that's the whole point of that step.
+  const demoLevel =
+    mode === "intro" ? 0 : mode === "bucket" ? 3 : mode === "identical" ? 2 : 4;
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -1209,7 +1346,7 @@ function DemoPond({
           <UnderwaterGrass idPrefix="demo" />
           <g>
             {fish.map((f) => (
-              <DemoFish key={f.id} fish={f} />
+              <DemoFish key={f.id} fish={f} level={demoLevel} />
             ))}
           </g>
           <g>
@@ -1240,42 +1377,20 @@ function DemoPond({
   );
 }
 
-function DemoFish({ fish }: { fish: Fish }) {
+function DemoFish({ fish, level }: { fish: Fish; level: number }) {
   const { x, y, size, rot } = fish;
   const deg = (rot * 180) / Math.PI;
+  const flip = Math.cos(rot) < 0 ? -1 : 1;
   return (
     <g>
-      <ellipse
-        cx={x + 1.4}
-        cy={y + 1.8}
-        rx={size * 1.5}
-        ry={size * 0.85}
-        fill="#06342a"
-        opacity="0.28"
-      />
+      <g
+        transform={`translate(${x + 1.7} ${y + 2.4}) rotate(${deg})`}
+        pointerEvents="none"
+      >
+        <FishShadow size={size} idPrefix="demo" flip={flip} />
+      </g>
       <g transform={`translate(${x} ${y}) rotate(${deg})`}>
-        <polygon
-          points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
-          fill="#7e4dff"
-        />
-        <path
-          d={`
-            M ${size * 1.35} 0
-            Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
-            Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
-            Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
-            Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
-            Z
-          `}
-          fill="url(#demoFishBody)"
-        />
-        <path
-          d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
-          fill="#5925d6"
-          opacity="0.7"
-        />
-        <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
-        <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
+        <FishArt size={size} level={level} idPrefix="demo" flip={flip} />
       </g>
     </g>
   );
