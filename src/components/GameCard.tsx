@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { GameMeta } from "@/lib/games";
+import { DOMAINS } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import { Sparkline, computeTrendPct } from "@/components/Sparkline";
 
@@ -45,7 +46,12 @@ export function GameCard({ game, best, history = [] }: Props) {
               Best {best === undefined ? "—" : formatScore(game.id, best)}
             </span>
           </div>
-          <h3 className="mt-4 text-lg font-extrabold sm:text-xl">{game.name}</h3>
+          <div className="mt-4 flex items-center gap-2">
+            <h3 className="text-lg font-extrabold sm:text-xl">{game.name}</h3>
+            <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide backdrop-blur">
+              {DOMAINS[game.domain].name}
+            </span>
+          </div>
           <p className="text-sm text-white/90">{game.tagline}</p>
         </div>
         <div className="flex items-center justify-between gap-3 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-800 dark:bg-slate-900/80 dark:text-slate-100">
