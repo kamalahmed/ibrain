@@ -6,12 +6,11 @@
  * that simply miss the cache and get fetched fresh. Bump CACHE to force a
  * clean slate.
  */
-const CACHE = "ibrain-v1";
+const CACHE = "ibrain-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/favicon.svg",
-  "/icon-maskable.svg",
   "/manifest.webmanifest",
 ];
 
