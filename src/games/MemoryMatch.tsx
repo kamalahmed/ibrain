@@ -255,25 +255,21 @@ export default function MemoryMatch() {
 
   const tutorialSteps: TutorialStep[] = [
     {
-      caption: "Flip two cards at a time.",
-      stage: <MemoryDemo stage="mismatch" />,
+      caption: "Tap a card to flip it — you can have two flipped at once.",
+      stage: <FlipDemo />,
     },
     {
-      caption: "Same symbols stay revealed. Different symbols flip back.",
-      stage: <MemoryDemo stage="match" />,
+      caption: "Matching symbols stay face-up. A mismatch flips back down.",
+      stage: <MatchDemo />,
     },
     {
       caption:
-        "Five grids: 4×4 → 4×5 → 4×6 → 5×6 → 6×6. Clear each to unlock the next.",
-      stage: (
-        <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={5} current={1} cleared={0} />
-        </div>
-      ),
+        "Five grids, each bigger than the last — 4×4 up to 6×6. Clear one to unlock the next.",
+      stage: <GridSizesDemo />,
     },
     {
-      caption: "Faster clears = more points. You have 5 minutes total.",
-      stage: <MemoryDemo stage="hidden" />,
+      caption: "Clear grids fast for a bigger bonus. Five minutes for all five.",
+      stage: <SpeedDemo />,
     },
   ];
 
@@ -439,37 +435,214 @@ function MemoryCard({
   );
 }
 
-function MemoryDemo({
-  stage,
+/* ---------------- Animated tutorial demos ---------------- */
+
+/** Cycles through a list of phase durations, looping forever. */
+function useLoopPhase(durations: number[]): number {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const t = window.setTimeout(
+      () => setPhase((p) => (p + 1) % durations.length),
+      durations[phase] ?? 1000
+    );
+    return () => window.clearTimeout(t);
+  }, [phase, durations]);
+  return phase;
+}
+
+type DemoCardState = "down" | "up" | "matched" | "miss";
+
+/** A single tutorial card that flips with the same 3D motion as the real game. */
+function DemoCard({
+  symbol,
+  state,
 }: {
-  stage: "hidden" | "mismatch" | "match";
+  symbol: string;
+  state: DemoCardState;
 }) {
-  const tiles: Array<{ face: string | null; matched?: boolean }> = [
-    { face: stage === "hidden" ? null : "🍎", matched: stage === "match" },
-    { face: stage === "hidden" ? null : null },
-    { face: stage === "hidden" ? null : null },
-    {
-      face: stage === "hidden" ? null : stage === "match" ? "🍎" : "🚀",
-      matched: stage === "match",
-    },
-  ];
+  const showFace = state !== "down";
+  const faceClass =
+    state === "matched"
+      ? "bg-emerald-100 ring-2 ring-emerald-300 dark:bg-emerald-900/50 dark:ring-emerald-600"
+      : state === "miss"
+      ? "bg-rose-50 ring-2 ring-rose-300 dark:bg-rose-900/40 dark:ring-rose-700"
+      : "bg-white ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700";
   return (
-    <div className="mx-auto grid max-w-[16rem] grid-cols-2 gap-3">
-      {tiles.map((t, i) => (
-        <div
+    <div className="relative aspect-square w-full" aria-hidden>
+      <motion.span
+        animate={{ rotateY: showFace ? 180 : 0 }}
+        transition={{ type: "spring", stiffness: 480, damping: 26, mass: 0.7 }}
+        className="absolute inset-0 grid place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-teal text-lg text-white shadow-soft"
+        style={{ backfaceVisibility: "hidden" }}
+      >
+        ?
+      </motion.span>
+      <motion.span
+        initial={false}
+        animate={{ rotateY: showFace ? 0 : -180 }}
+        transition={{ type: "spring", stiffness: 480, damping: 26, mass: 0.7 }}
+        className={
+          "absolute inset-0 grid place-items-center rounded-xl text-2xl sm:text-3xl " +
+          faceClass
+        }
+        style={{ backfaceVisibility: "hidden" }}
+      >
+        {symbol}
+      </motion.span>
+    </div>
+  );
+}
+
+const FLIP_PHASES = [1100, 1700];
+const FLIP_SYMBOLS = ["🍎", "🚀", "🌈", "🎵"];
+
+/** Step 1: two cards flip up and back down, on a loop. */
+function FlipDemo() {
+  const phase = useLoopPhase(FLIP_PHASES);
+  const up = phase === 1;
+  return (
+    <div className="grid min-h-[22vh] place-items-center">
+      <div className="grid w-full max-w-[17rem] grid-cols-4 gap-2.5">
+        {FLIP_SYMBOLS.map((s, i) => (
+          <DemoCard
+            key={i}
+            symbol={s}
+            state={up && (i === 1 || i === 2) ? "up" : "down"}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const MATCH_PHASES = [900, 650, 950, 800, 600, 650, 950, 1500, 800];
+const MATCH_SYMBOLS = ["🍎", "🚀", "🌈", "🌈"];
+
+/** Step 2: a mismatch flips back, then a real match stays and turns green. */
+function MatchDemo() {
+  const p = useLoopPhase(MATCH_PHASES);
+  // 0 down · 1 c0 up · 2 c1 up · 3 mismatch · 4 c0/c1 down ·
+  // 5 c2 up · 6 c3 up · 7 matched · 8 hold
+  const c0: DemoCardState =
+    p === 1 || p === 2 ? "up" : p === 3 ? "miss" : "down";
+  const c1: DemoCardState = p === 2 ? "up" : p === 3 ? "miss" : "down";
+  const c2: DemoCardState =
+    p === 5 || p === 6 ? "up" : p === 7 || p === 8 ? "matched" : "down";
+  const c3: DemoCardState =
+    p === 6 ? "up" : p === 7 || p === 8 ? "matched" : "down";
+  const states = [c0, c1, c2, c3];
+  return (
+    <div className="grid min-h-[22vh] place-items-center">
+      <div className="grid w-full max-w-[17rem] grid-cols-4 gap-2.5">
+        {MATCH_SYMBOLS.map((s, i) => (
+          <DemoCard key={i} symbol={s} state={states[i]} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const GRID_SIZES: Array<[number, number]> = [
+  [4, 4],
+  [4, 5],
+  [4, 6],
+  [5, 6],
+  [6, 6],
+];
+const GRID_PHASES = [1300, 1300, 1300, 1300, 1300];
+
+function MiniGrid({
+  cols,
+  rows,
+  active,
+}: {
+  cols: number;
+  rows: number;
+  active: boolean;
+}) {
+  return (
+    <motion.div
+      animate={{ scale: active ? 1.12 : 1 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className={
+        "grid gap-[2px] rounded-lg p-1.5 ring-1 " +
+        (active
+          ? "bg-brand-50 ring-brand-300 dark:bg-brand-900/40 dark:ring-brand-600"
+          : "bg-white/70 ring-slate-200 dark:bg-slate-800/70 dark:ring-slate-700")
+      }
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      aria-hidden
+    >
+      {Array.from({ length: cols * rows }).map((_, i) => (
+        <span
           key={i}
           className={
-            "grid aspect-square place-items-center rounded-2xl text-3xl shadow-soft " +
-            (t.matched
-              ? "bg-emerald-100 ring-2 ring-emerald-300"
-              : t.face
-              ? "bg-white ring-1 ring-slate-200"
-              : "bg-gradient-to-br from-brand-500 to-accent-teal text-white")
+            "h-1.5 w-1.5 rounded-[2px] " +
+            (active
+              ? "bg-brand-500 dark:bg-brand-400"
+              : "bg-slate-300 dark:bg-slate-600")
           }
-        >
-          {t.face ?? "?"}
-        </div>
+        />
       ))}
+    </motion.div>
+  );
+}
+
+/** Step 3: the five grids, the active one highlighted on a loop. */
+function GridSizesDemo() {
+  const active = useLoopPhase(GRID_PHASES);
+  return (
+    <div className="grid min-h-[22vh] place-items-center">
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+        {GRID_SIZES.map(([c, r], i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5">
+            <MiniGrid cols={c} rows={r} active={i === active} />
+            <span
+              className={
+                "text-xs font-bold " +
+                (i === active
+                  ? "text-brand-700 dark:text-brand-300"
+                  : "text-slate-400 dark:text-slate-500")
+              }
+            >
+              {c}×{r}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SPEED_SYMBOLS = ["🍉", "🍉", "⭐️", "⭐️"];
+
+/** Step 4: a cleared grid with a speed bonus floating up, on a loop. */
+function SpeedDemo() {
+  return (
+    <div className="grid min-h-[22vh] place-items-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <div className="grid w-36 grid-cols-2 gap-2">
+            {SPEED_SYMBOLS.map((s, i) => (
+              <DemoCard key={i} symbol={s} state="matched" />
+            ))}
+          </div>
+          <motion.div
+            className="absolute -right-3 -top-2 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-black text-amber-950 shadow-soft"
+            animate={{ y: [4, -12, 4], opacity: [0, 1, 0] }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: "easeOut" }}
+            aria-hidden
+          >
+            +150 ⚡
+          </motion.div>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <span className="chip">⏱ 5:00 total</span>
+          <span className="chip bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-900/40 dark:text-amber-200 dark:ring-amber-800">
+            faster clear = bigger bonus
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
