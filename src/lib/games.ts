@@ -7,6 +7,64 @@ export type GameId =
   | "pond"
   | "stroop";
 
+/** Broad cognitive areas each game trains — the way Lumosity-style trainers
+ *  group their exercises so progress is legible, not just a pile of scores. */
+export type CognitiveDomain =
+  | "speed"
+  | "memory"
+  | "attention"
+  | "problem"
+  | "flexibility";
+
+export type DomainMeta = {
+  id: CognitiveDomain;
+  name: string;
+  /** One-line description of the cognitive area. */
+  blurb: string;
+  accent: string; // tailwind gradient classes
+};
+
+export const DOMAINS: Record<CognitiveDomain, DomainMeta> = {
+  speed: {
+    id: "speed",
+    name: "Speed",
+    blurb: "How quickly you take in information and act on it.",
+    accent: "from-amber-400 to-pink-500",
+  },
+  memory: {
+    id: "memory",
+    name: "Memory",
+    blurb: "Holding and updating information over short spans.",
+    accent: "from-teal-400 to-sky-500",
+  },
+  attention: {
+    id: "attention",
+    name: "Attention",
+    blurb: "Staying focused and tracking what matters.",
+    accent: "from-emerald-400 to-teal-500",
+  },
+  problem: {
+    id: "problem",
+    name: "Problem Solving",
+    blurb: "Reasoning through numbers and patterns under pressure.",
+    accent: "from-fuchsia-400 to-brand-500",
+  },
+  flexibility: {
+    id: "flexibility",
+    name: "Flexibility",
+    blurb: "Switching rules and overriding automatic responses.",
+    accent: "from-violet-500 to-pink-500",
+  },
+};
+
+export const DOMAIN_ORDER: CognitiveDomain[] = [
+  "speed",
+  "attention",
+  "memory",
+  "problem",
+  "flexibility",
+];
+
 export type GameMeta = {
   id: GameId;
   name: string;
@@ -18,6 +76,10 @@ export type GameMeta = {
   scoreUnit: string;
   // Lower raw score = better (e.g. ms, seconds). We invert for "brain score".
   lowerIsBetter: boolean;
+  /** Cognitive area this game primarily trains. */
+  domain: CognitiveDomain;
+  /** "What this trains" — the science framing shown before a session. */
+  trains: string;
 };
 
 export const GAMES: GameMeta[] = [
@@ -32,6 +94,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-amber-400 to-pink-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "speed",
+    trains:
+      "Processing speed and motor response — the lag between seeing a cue and acting on it. Faster, more consistent responses point to sharper information processing.",
   },
   {
     id: "memory",
@@ -44,6 +109,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-teal-400 to-sky-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "memory",
+    trains:
+      "Visuospatial working memory — building and refreshing a mental map of where things are. The same system you lean on for names, faces and where you left your keys.",
   },
   {
     id: "nback",
@@ -56,6 +124,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-indigo-400 to-brand-600",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "memory",
+    trains:
+      "Working-memory updating — continuously holding, comparing and refreshing a short sequence. The n-back is one of the most studied measures of fluid working memory in cognitive science.",
   },
   {
     id: "math",
@@ -68,6 +139,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-fuchsia-400 to-brand-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "problem",
+    trains:
+      "Numerical fluency and decision-making under time pressure — retrieving arithmetic facts quickly while resisting plausible-looking wrong answers.",
   },
   {
     id: "schulte",
@@ -80,6 +154,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-emerald-400 to-teal-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "attention",
+    trains:
+      "Visual search and peripheral attention — Schulte tables are a long-standing drill for widening your span of attention and taking in more at a glance.",
   },
   {
     id: "pond",
@@ -92,6 +169,9 @@ export const GAMES: GameMeta[] = [
     accent: "from-cyan-400 to-emerald-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "attention",
+    trains:
+      "Divided attention and multiple-object tracking (Pylyshyn & Storm, 1988) — keeping several moving targets in mind at once without losing track of which you've handled.",
   },
   {
     id: "stroop",
@@ -104,8 +184,15 @@ export const GAMES: GameMeta[] = [
     accent: "from-violet-500 to-pink-500",
     scoreUnit: "pts",
     lowerIsBetter: false,
+    domain: "flexibility",
+    trains:
+      "Response inhibition and cognitive control — the Stroop effect (Stroop, 1935) measures how well you override an automatic response to follow the rule that actually matters.",
   },
 ];
+
+export function gamesByDomain(domain: CognitiveDomain): GameMeta[] {
+  return GAMES.filter((g) => g.domain === domain);
+}
 
 export function getGame(id: GameId): GameMeta {
   const g = GAMES.find((x) => x.id === id);
