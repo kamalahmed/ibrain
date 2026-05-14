@@ -1,5 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import { useStore } from "@/store/useStore";
+import { InstallButton } from "@/components/InstallButton";
 
 export function Navbar() {
   const theme = useStore((s) => s.theme);
@@ -31,6 +32,7 @@ export function Navbar() {
           <span className="text-lg">iBrain</span>
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
+          <InstallButton />
           <NavLink
             to="/daily"
             className={({ isActive }) =>
