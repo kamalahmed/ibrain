@@ -47,10 +47,20 @@ export default {
           "0%, 100%": { transform: "scale(1)" },
           "50%": { transform: "scale(1.04)" },
         },
+        fishTail: {
+          "0%, 100%": { transform: "rotate(-16deg)" },
+          "50%": { transform: "rotate(16deg)" },
+        },
+        fishFin: {
+          "0%, 100%": { transform: "rotate(-8deg)" },
+          "50%": { transform: "rotate(17deg)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 240ms ease-out both",
         "pulse-soft": "pulseSoft 1.8s ease-in-out infinite",
+        "fish-tail": "fishTail 0.5s ease-in-out infinite",
+        "fish-fin": "fishFin 1s ease-in-out infinite",
       },
     },
   },

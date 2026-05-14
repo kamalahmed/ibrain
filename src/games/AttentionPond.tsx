@@ -21,7 +21,8 @@ type Phase =
 
 const BOUNDS = { w: 100, h: 100 };
 const BUCKET_REFILL_MS = 2000;
-const PING_LIFE_MS = 600;
+const PING_LIFE_MS = 850;
+const GRAIN_LIFE_MS = 460;
 const SESSION_SECONDS = 300;
 const LEVEL_CLEAR_BONUS = 50;
 
@@ -83,6 +84,16 @@ type Ping = {
   born: number;
 };
 
+/** A pellet of food arcing from the bucket up to a tapped fish. */
+type Grain = {
+  id: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  born: number;
+};
+
 type Level = {
   id: 1 | 2 | 3 | 4 | 5;
   name: string;
@@ -98,7 +109,12 @@ const LEVELS: Level[] = [
   { id: 5, name: "7 fish", count: 7, seconds: 50 },
 ];
 
-function spawnFish(count: number): Fish[] {
+/** Fish shrink as later levels add more of them, so a crowded pond still fits. */
+function fishSizeForLevel(levelIdx: number): number {
+  return Math.max(5, 7.6 - levelIdx * 0.6);
+}
+
+function spawnFish(count: number, size: number): Fish[] {
   const fish: Fish[] = [];
   const margin = 12;
   for (let i = 0; i < count; i++) {
@@ -110,7 +126,7 @@ function spawnFish(count: number): Fish[] {
       y: margin + Math.random() * (BOUNDS.h - margin * 2),
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      size: 7,
+      size,
       rot: angle,
       fed: false,
     });
@@ -213,6 +229,7 @@ export default function AttentionPond() {
   const [finalScore, setFinalScore] = useState(0);
   const [isBest, setIsBest] = useState(false);
   const [pings, setPings] = useState<Ping[]>([]);
+  const [grains, setGrains] = useState<Grain[]>([]);
   const [bucketReady, setBucketReady] = useState(true);
   const [bucketProgress, setBucketProgress] = useState(1); // 0 refilling → 1 full
   const [bucketShake, setBucketShake] = useState(0);
@@ -227,6 +244,8 @@ export default function AttentionPond() {
   const bucketDeadlineRef = useRef(0);
   const pingsRef = useRef<Ping[]>([]);
   const pingIdRef = useRef(0);
+  const grainsRef = useRef<Grain[]>([]);
+  const grainIdRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
   const deadlineRef = useRef(0); // per-level deadline (performance.now base)
@@ -305,7 +324,7 @@ export default function AttentionPond() {
 
   const startLevel = useCallback((idx: number) => {
     const lvl = LEVELS[idx];
-    const f = spawnFish(lvl.count);
+    const f = spawnFish(lvl.count, fishSizeForLevel(idx));
     const pads = spawnLilies(idx); // 0, 1, 2, 3, 4 per level
     const rds = spawnReeds(idx); // 3, 4, 5, 6, 7 per level
     setFish(f);
@@ -321,6 +340,8 @@ export default function AttentionPond() {
     setBucketProgress(1);
     pingsRef.current = [];
     setPings([]);
+    grainsRef.current = [];
+    setGrains([]);
     setLevelIdx(idx);
     setPhase("playing");
   }, []);
@@ -390,6 +411,15 @@ export default function AttentionPond() {
         setPings(trimmed);
       }
 
+      // --- grain cleanup ---
+      const grainsLeft = grainsRef.current.filter(
+        (g) => now - g.born < GRAIN_LIFE_MS
+      );
+      if (grainsLeft.length !== grainsRef.current.length) {
+        grainsRef.current = grainsLeft;
+        setGrains(grainsLeft);
+      }
+
       // --- per-level timer ---
       const remainingMs = deadlineRef.current - now;
       setLevelTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
@@ -417,6 +447,19 @@ export default function AttentionPond() {
     };
     pingsRef.current = [...pingsRef.current, ping];
     setPings(pingsRef.current);
+  };
+
+  const addGrain = (toX: number, toY: number) => {
+    const grain: Grain = {
+      id: ++grainIdRef.current,
+      fromX: 50,
+      fromY: 101, // just below the pond — reads as a toss from the bucket
+      toX,
+      toY,
+      born: performance.now(),
+    };
+    grainsRef.current = [...grainsRef.current, grain];
+    setGrains(grainsRef.current);
   };
 
   const tapFish = (id: number, e: React.PointerEvent) => {
@@ -452,6 +495,7 @@ export default function AttentionPond() {
     levelPointsRef.current += 100;
     setScore(scoreRef.current);
     addPing(hit.x, hit.y, "+100", "ok");
+    addGrain(hit.x, hit.y);
 
     const next = fishRef.current.map((f) =>
       f.id === id ? { ...f, fed: true } : f
@@ -594,6 +638,7 @@ export default function AttentionPond() {
                 lilies={lilies}
                 reeds={reeds}
                 pings={pings}
+                grains={grains}
                 levelIdx={levelIdx}
                 onTapFish={tapFish}
                 showOverlay={false}
@@ -706,6 +751,7 @@ function Pond({
   lilies,
   reeds,
   pings,
+  grains,
   levelIdx,
   onTapFish,
   showOverlay,
@@ -714,6 +760,7 @@ function Pond({
   lilies: LilyPad[];
   reeds: Reed[];
   pings: Ping[];
+  grains: Grain[];
   levelIdx: number;
   onTapFish: (id: number, e: React.PointerEvent) => void;
   showOverlay: boolean;
@@ -772,6 +819,13 @@ function Pond({
         <g pointerEvents="none">
           {reeds.map((r) => (
             <ReedClump key={r.id} reed={r} idPrefix="pond" />
+          ))}
+        </g>
+
+        {/* food pellets flying from the bucket to fed fish */}
+        <g pointerEvents="none">
+          {grains.map((g) => (
+            <GrainGlyph key={g.id} grain={g} />
           ))}
         </g>
 
@@ -975,13 +1029,14 @@ function FishArt({
   const fin = LEVEL_FISH[level].dark;
   return (
     <g transform={`scale(1 ${flip})`}>
-      {/* caudal (tail) fin — wags as it swims */}
-      <motion.path
+      {/* caudal (tail) fin — wags as it swims. CSS animation rather than
+          framer-motion: the parent <g> re-renders every frame from the game
+          loop, which would keep restarting a framer keyframe animation. */}
+      <path
         d={fishTailPath(size)}
         fill={fin}
+        className="animate-fish-tail"
         style={pivot("100% 50%")}
-        animate={{ rotate: [-15, 15, -15] }}
-        transition={{ duration: 0.55, repeat: Infinity, ease: "easeInOut" }}
       />
       {/* dorsal fin (tucks into the body) */}
       <path d={fishDorsalPath(size)} fill={fin} opacity="0.92" />
@@ -997,13 +1052,12 @@ function FishArt({
         opacity="0.45"
       />
       {/* pectoral fin — gentle flap */}
-      <motion.path
+      <path
         d={fishPectoralPath(size)}
         fill={fin}
         opacity="0.85"
+        className="animate-fish-fin"
         style={pivot("0% 0%")}
-        animate={{ rotate: [-8, 16, -8] }}
-        transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
       />
       {/* gill line */}
       <path
@@ -1173,16 +1227,30 @@ function LilyPadShape({ pad, idPrefix }: { pad: LilyPad; idPrefix: string }) {
   );
 }
 
-/* ---------------- Ping ---------------- */
+/* ---------------- Ping (score popup) ---------------- */
 
 function PingGlyph({ ping }: { ping: Ping }) {
   const t = Math.min(1, (performance.now() - ping.born) / PING_LIFE_MS);
-  const rippleR = 2 + t * 10;
-  const rippleOpacity = 0.8 * (1 - t);
-  const textY = ping.y - t * 20;
-  const textOpacity = 1 - t;
-  const stroke = ping.color === "ok" ? "#10b981" : "#f43f5e";
-  const fill = ping.color === "ok" ? "#059669" : "#e11d48";
+  const isOk = ping.color === "ok";
+  const bg = isOk ? "#10b981" : "#f43f5e";
+  const bgEdge = isOk ? "#047857" : "#be123c";
+
+  // pop in with a little overshoot, then settle
+  let scale: number;
+  if (t < 0.18) scale = 0.5 + (1.18 - 0.5) * (t / 0.18);
+  else if (t < 0.34) scale = 1.18 - 0.18 * ((t - 0.18) / 0.16);
+  else scale = 1;
+
+  const y = ping.y - 4 - t * 11;
+  const opacity = t < 0.68 ? 1 : 1 - (t - 0.68) / 0.32;
+
+  // a feeding splash ripple stays at the fish
+  const rippleR = 1.5 + t * 9;
+  const rippleOpacity = 0.7 * (1 - t);
+
+  const w = 8 + ping.text.length * 3.6;
+  const h = 9.5;
+
   return (
     <g pointerEvents="none">
       <circle
@@ -1190,29 +1258,153 @@ function PingGlyph({ ping }: { ping: Ping }) {
         cy={ping.y}
         r={rippleR}
         fill="none"
-        stroke={stroke}
-        strokeWidth="0.6"
+        stroke={bg}
+        strokeWidth="0.7"
         opacity={rippleOpacity}
       />
-      <text
-        x={ping.x}
-        y={textY}
-        fill={fill}
-        opacity={textOpacity}
-        fontSize="4.5"
-        fontWeight="800"
-        textAnchor="middle"
-        style={{ paintOrder: "stroke" }}
-        stroke="#ffffff"
-        strokeWidth="0.4"
+      <g
+        transform={`translate(${ping.x} ${y}) scale(${scale})`}
+        opacity={opacity}
       >
-        {ping.text}
-      </text>
+        <rect
+          x={-w / 2}
+          y={-h / 2}
+          width={w}
+          height={h}
+          rx={h / 2}
+          fill={bg}
+          stroke={bgEdge}
+          strokeWidth="0.5"
+        />
+        <text
+          x="0"
+          y="0"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize="5.6"
+          fontWeight="900"
+          fill="#ffffff"
+        >
+          {ping.text}
+        </text>
+      </g>
+    </g>
+  );
+}
+
+/* ---------------- Grain (food pellet) ---------------- */
+
+function GrainGlyph({ grain }: { grain: Grain }) {
+  const t = Math.min(1, (performance.now() - grain.born) / GRAIN_LIFE_MS);
+  const x = grain.fromX + (grain.toX - grain.fromX) * t;
+  // arc upward over the flight, landing on the fish
+  const y =
+    grain.fromY + (grain.toY - grain.fromY) * t - 14 * Math.sin(t * Math.PI);
+  const scale = t < 0.85 ? 1 : Math.max(0, 1 - (t - 0.85) / 0.15);
+  const opacity = t < 0.8 ? 1 : Math.max(0, 1 - (t - 0.8) / 0.2);
+  return (
+    <g
+      transform={`translate(${x} ${y}) rotate(${t * 260}) scale(${scale})`}
+      opacity={opacity}
+    >
+      <ellipse
+        rx="1.8"
+        ry="0.85"
+        fill="#f6d896"
+        stroke="#c89a4a"
+        strokeWidth="0.25"
+      />
     </g>
   );
 }
 
 /* ---------------- Bucket ---------------- */
+
+function BucketIcon({ pct, ready }: { pct: number; ready: boolean }) {
+  // body interior runs roughly y 16 (rim) → 37 (base); the feed level rises
+  // from empty to full as the bucket refills.
+  const fillTop = 37 - pct * 21;
+  const bodyPath = "M 9 14 L 35 14 L 31 36 Q 22 40 13 36 Z";
+  return (
+    <svg viewBox="0 0 44 44" className="h-12 w-12" aria-hidden>
+      <defs>
+        <linearGradient id="bucketBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#e8ab5d" />
+          <stop offset="100%" stopColor="#a4682b" />
+        </linearGradient>
+        <clipPath id="bucketClip">
+          <path d={bodyPath} />
+        </clipPath>
+      </defs>
+      {/* handle */}
+      <path
+        d="M 12 14 Q 22 2.5 32 14"
+        fill="none"
+        stroke="#7c4f24"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {/* back rim */}
+      <ellipse cx="22" cy="14" rx="13" ry="3.4" fill="#b5793a" />
+      {/* wooden body */}
+      <path d={bodyPath} fill="url(#bucketBody)" />
+      {/* feed inside, clipped to the body */}
+      <g clipPath="url(#bucketClip)">
+        <rect x="7" y={fillTop} width="30" height="32" fill="#f3d79b" />
+        <g fill="#e3bd72">
+          <ellipse
+            cx="16"
+            cy={fillTop + 1.6}
+            rx="1.7"
+            ry="0.9"
+            transform={`rotate(22 16 ${fillTop + 1.6})`}
+          />
+          <ellipse
+            cx="23"
+            cy={fillTop + 2.6}
+            rx="1.7"
+            ry="0.9"
+            transform={`rotate(-16 23 ${fillTop + 2.6})`}
+          />
+          <ellipse
+            cx="29"
+            cy={fillTop + 1.3}
+            rx="1.7"
+            ry="0.9"
+            transform={`rotate(38 29 ${fillTop + 1.3})`}
+          />
+        </g>
+      </g>
+      {/* staves + outline on top of the feed */}
+      <path
+        d="M 11 22 Q 22 25 33 22"
+        fill="none"
+        stroke="#7c4f24"
+        strokeWidth="0.9"
+        opacity="0.55"
+      />
+      <path
+        d="M 12 29 Q 22 32 32 29"
+        fill="none"
+        stroke="#7c4f24"
+        strokeWidth="0.9"
+        opacity="0.55"
+      />
+      <path d={bodyPath} fill="none" stroke="#7c4f24" strokeWidth="1.4" />
+      {/* front rim */}
+      <ellipse
+        cx="22"
+        cy="14"
+        rx="13"
+        ry="3.4"
+        fill="none"
+        stroke="#7c4f24"
+        strokeWidth="1.4"
+      />
+      {ready && <ellipse cx="22" cy="14" rx="11" ry="2.4" fill="#f3d79b" />}
+    </svg>
+  );
+}
 
 function Bucket({
   ready,
@@ -1230,44 +1422,39 @@ function Bucket({
         key={shakeKey}
         animate={shakeKey > 0 ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
         transition={{ duration: 0.35, ease: "easeInOut" }}
-        className="flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-2 ring-1 ring-slate-200 shadow-soft dark:bg-slate-900/60 dark:ring-slate-700"
+        className={
+          "flex items-center gap-3 rounded-2xl px-4 py-2.5 shadow-soft ring-1 " +
+          (ready
+            ? "bg-amber-50/90 ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-800"
+            : "bg-white/75 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-700")
+        }
         aria-live="polite"
         data-testid="bucket"
         data-ready={ready ? "1" : "0"}
       >
-        <div
-          className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-800"
-          aria-hidden
+        <motion.div
+          animate={ready ? { y: [0, -1.5, 0] } : { y: 0 }}
+          transition={
+            ready
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.2 }
+          }
         >
-          {/* progress fill from the bottom */}
-          <div
-            className="absolute inset-x-0 bottom-0 bg-amber-300/80 dark:bg-amber-500/50 transition-[height] duration-75"
-            style={{ height: `${pct * 100}%` }}
-          />
-          <svg viewBox="0 0 24 24" className="relative h-6 w-6">
-            {/* pellet glyph */}
-            {ready ? (
-              <circle cx="12" cy="12" r="5" fill="#f59e0b" stroke="#b45309" strokeWidth="1" />
-            ) : (
-              <circle
-                cx="12"
-                cy="12"
-                r="5"
-                fill="none"
-                stroke="#b45309"
-                strokeWidth="1"
-                strokeDasharray="2 2"
-                opacity="0.6"
-              />
-            )}
-          </svg>
-        </div>
+          <BucketIcon pct={pct} ready={ready} />
+        </motion.div>
         <div className="flex flex-col">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
             Feeding bucket
           </span>
-          <span className={"text-sm font-bold " + (ready ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-slate-400")}>
-            {ready ? "Ready" : `Refilling… ${Math.round(pct * 100)}%`}
+          <span
+            className={
+              "text-sm font-bold " +
+              (ready
+                ? "text-amber-700 dark:text-amber-300"
+                : "text-slate-500 dark:text-slate-400")
+            }
+          >
+            {ready ? "Ready — tap a fish" : `Refilling… ${Math.round(pct * 100)}%`}
           </span>
         </div>
       </motion.div>
