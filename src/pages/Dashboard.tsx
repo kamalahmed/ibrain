@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
@@ -7,7 +8,7 @@ import { GAMES, DOMAINS, DOMAIN_ORDER, type GameId } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
 import {
   selectBrainScore,
-  selectDomainScores,
+  computeDomainScores,
   useStore,
 } from "@/store/useStore";
 import { fadeUp } from "@/lib/motion";
@@ -24,7 +25,10 @@ export default function Dashboard() {
   const bestDaily = useStore((s) => s.bestDaily);
   const lastDailyDate = useStore((s) => s.lastDailyDate);
   const dailyResults = useStore((s) => s.dailyResults);
-  const domainScores = useStore(selectDomainScores);
+  const domainScores = useMemo(
+    () => computeDomainScores(bestScores),
+    [bestScores]
+  );
   const doneToday = lastDailyDate === todayKey();
   const recent = history.slice(0, 5);
   const totalPlayed = history.length;
