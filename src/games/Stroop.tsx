@@ -24,9 +24,9 @@ type Color = "red" | "green" | "blue" | "yellow";
 type LevelMode =
   | "swatchOnly" // L1: colour rectangle, no word
   | "wordNeutral" // L2: word shown in neutral ink
-  | "congruent" // L3: word ink matches meaning
-  | "incongruent" // L4: word ink never matches meaning
-  | "mixed"; // L5: incongruent word + per-trial prompt swap
+  | "congruent" // word ink matches meaning (unused by current levels)
+  | "incongruent" // L3: word ink never matches meaning
+  | "mixed"; // L4: incongruent word + per-trial prompt swap
 
 type RespondTo = "ink" | "word";
 
@@ -44,7 +44,7 @@ type TrialResult = {
 };
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   ruleLabel: string;
   mode: LevelMode;
@@ -56,7 +56,7 @@ type Level = {
 
 const COLORS: Color[] = ["red", "green", "blue", "yellow"];
 
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const INTER_STIMULUS_MS = 300;
 const LEVEL_CLEAR_BONUS = 50;
 const FALSE_ALARM_PENALTY = -5;
@@ -84,31 +84,21 @@ const LEVELS: Level[] = [
   },
   {
     id: 3,
-    name: "Congruent",
-    ruleLabel: "Tap the INK colour",
-    mode: "congruent",
-    trialCount: 24,
-    requiredCorrect: 18,
-    startWindowMs: 1800,
-    endWindowMs: 1400,
-  },
-  {
-    id: 4,
     name: "Incongruent",
     ruleLabel: "Tap the INK colour",
     mode: "incongruent",
-    trialCount: 28,
-    requiredCorrect: 20,
+    trialCount: 26,
+    requiredCorrect: 19,
     startWindowMs: 2000,
     endWindowMs: 1500,
   },
   {
-    id: 5,
+    id: 4,
     name: "Mixed switch",
     ruleLabel: "Read the prompt each trial",
     mode: "mixed",
-    trialCount: 32,
-    requiredCorrect: 22,
+    trialCount: 30,
+    requiredCorrect: 21,
     startWindowMs: 1800,
     endWindowMs: 1300,
   },
@@ -449,7 +439,7 @@ export default function Stroop() {
     },
     {
       caption:
-        "Level 4 is the classic Stroop: the word says one thing, the ink says another. Tap the INK colour and resist reading.",
+        "Level 3 is the classic Stroop: the word says one thing, the ink says another. Tap the INK colour and resist reading.",
       stage: (
         <div className="grid min-h-[26vh] place-items-center rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
           <div className="text-center">
@@ -464,10 +454,10 @@ export default function Stroop() {
     },
     {
       caption:
-        "Level 5 flips the rule trial by trial: sometimes tap the INK, sometimes tap the WORD. Read the prompt every time.",
+        "Level 4 flips the rule trial by trial: sometimes tap the INK, sometimes tap the WORD. Read the prompt every time.",
       stage: (
         <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={5} current={1} cleared={0} />
+          <LevelProgress total={4} current={1} cleared={0} />
         </div>
       ),
     },
@@ -497,10 +487,10 @@ export default function Stroop() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five Stroop levels in one 5-minute session. Levels 1–2 build the
-          colour-to-word map. Level 3 is congruent (word and ink agree).
-          Level 4 is the classic Stroop conflict — the word fights the
-          ink. Level 5 flips the rule each trial — read the prompt.
+          Four Stroop levels in one 3-minute session. Levels 1–2 build the
+          colour-to-word map. Level 3 is the classic Stroop conflict — the
+          word fights the ink. Level 4 flips the rule each trial — read the
+          prompt.
         </Instructions>
       )}
 

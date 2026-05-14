@@ -13,8 +13,8 @@ test("selectBrainScore is 0 before anything is played", () => {
 });
 
 test("selectBrainScore averages normalized bests across played games", () => {
-  // math anchor 400 and reaction anchor 2500 both normalize to 100.
-  const state = { bestScores: { math: 400, reaction: 2500 } } as never;
+  // math anchor 240 and reaction anchor 1500 both normalize to 100.
+  const state = { bestScores: { math: 240, reaction: 1500 } } as never;
   assert.equal(selectBrainScore(state), 100);
 });
 
@@ -29,8 +29,8 @@ test("computeDomainScores reports zero/untrained for an empty profile", () => {
 });
 
 test("computeDomainScores averages the normalized bests within a domain", () => {
-  // memory domain = Memory Match (anchor 1500) + N-Back (anchor 900).
-  const ds = computeDomainScores({ memory: 1500, nback: 900 });
+  // memory domain = Memory Match (anchor 900) + N-Back (anchor 550).
+  const ds = computeDomainScores({ memory: 900, nback: 550 });
   assert.equal(ds.memory.score, 100);
   assert.equal(ds.memory.played, 2);
   assert.equal(ds.memory.total, 2);
@@ -48,8 +48,8 @@ test("computeDomainScores totals add up to the full game roster", () => {
 // Consumers must memoize it. This test pins the hazard so the contract is
 // explicit and the rename away from "select*" is intentional.
 test("computeDomainScores returns a fresh, deeply-equal object each call", () => {
-  const a = computeDomainScores({ math: 400 });
-  const b = computeDomainScores({ math: 400 });
+  const a = computeDomainScores({ math: 240 });
+  const b = computeDomainScores({ math: 240 });
   assert.notEqual(a, b, "must be a new reference (not a memo-safe selector)");
   assert.deepEqual(a, b, "same input must produce the same data");
 });

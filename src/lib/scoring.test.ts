@@ -23,9 +23,9 @@ test("normalizeScore stays within 0-100 for every game", () => {
 });
 
 test("normalizeScore scales linearly below the anchor", () => {
-  // math anchor: 400 raw points => 100
-  assert.equal(normalizeScore("math", 200), 50);
-  assert.equal(normalizeScore("math", 400), 100);
+  // math anchor: 240 raw points => 100
+  assert.equal(normalizeScore("math", 120), 50);
+  assert.equal(normalizeScore("math", 240), 100);
 });
 
 test("formatScore renders rounded integer points", () => {

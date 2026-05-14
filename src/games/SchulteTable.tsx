@@ -19,7 +19,7 @@ type Phase =
   | "done";
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   size: 5 | 6 | 7;
   colored: boolean;
@@ -27,16 +27,15 @@ type Level = {
   targetSeconds: number;
 };
 
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const POINTS_PER_TAP = 3;
 const LEVEL_CLEAR_BASE = 100;
 
 const LEVELS: Level[] = [
-  { id: 1, name: "5×5", size: 5, colored: false, targetSeconds: 35 },
-  { id: 2, name: "5×5 coloured", size: 5, colored: true, targetSeconds: 45 },
-  { id: 3, name: "6×6", size: 6, colored: false, targetSeconds: 65 },
-  { id: 4, name: "6×6 coloured", size: 6, colored: true, targetSeconds: 80 },
-  { id: 5, name: "7×7", size: 7, colored: false, targetSeconds: 110 },
+  { id: 1, name: "5×5", size: 5, colored: false, targetSeconds: 30 },
+  { id: 2, name: "5×5 coloured", size: 5, colored: true, targetSeconds: 40 },
+  { id: 3, name: "6×6", size: 6, colored: false, targetSeconds: 55 },
+  { id: 4, name: "6×6 coloured", size: 6, colored: true, targetSeconds: 70 },
 ];
 
 function shuffled(total: number): number[] {
@@ -226,10 +225,10 @@ export default function SchulteTable() {
       stage: <SchulteDemo size={5} colored next={1} />,
     },
     {
-      caption: "Clear all five grids (5×5 → 7×7) inside 5 minutes.",
+      caption: "Clear all four grids (5×5 → 6×6) inside 3 minutes.",
       stage: (
         <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={5} current={1} cleared={0} />
+          <LevelProgress total={4} current={1} cleared={0} />
         </div>
       ),
     },
@@ -246,7 +245,7 @@ export default function SchulteTable() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five Schulte grids in one 5-minute session — 5×5 → 6×6 → 7×7, with
+          Four Schulte grids in one 3-minute session — 5×5 → 6×6, with
           colour-distraction variants on levels 2 and 4. Clear each grid to
           unlock the next. Wrong taps don't hurt; just shake the grid.
         </Instructions>

@@ -26,14 +26,14 @@ type Card = {
 };
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   cols: number;
   rows: number;
   targetSeconds: number;
 };
 
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const POINTS_PER_MATCH = 30;
 const LEVEL_CLEAR_BASE = 150;
 const MISMATCH_HIDE_MS = 700;
@@ -45,11 +45,10 @@ const SYMBOLS = [
 ];
 
 const LEVELS: Level[] = [
-  { id: 1, name: "4×4", cols: 4, rows: 4, targetSeconds: 30 },
-  { id: 2, name: "4×5", cols: 4, rows: 5, targetSeconds: 45 },
-  { id: 3, name: "4×6", cols: 4, rows: 6, targetSeconds: 60 },
-  { id: 4, name: "5×6", cols: 5, rows: 6, targetSeconds: 80 },
-  { id: 5, name: "6×6", cols: 6, rows: 6, targetSeconds: 100 },
+  { id: 1, name: "4×4", cols: 4, rows: 4, targetSeconds: 25 },
+  { id: 2, name: "4×5", cols: 4, rows: 5, targetSeconds: 35 },
+  { id: 3, name: "4×6", cols: 4, rows: 6, targetSeconds: 48 },
+  { id: 4, name: "5×6", cols: 5, rows: 6, targetSeconds: 65 },
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -264,11 +263,11 @@ export default function MemoryMatch() {
     },
     {
       caption:
-        "Five grids, each bigger than the last — 4×4 up to 6×6. Clear one to unlock the next.",
+        "Four grids, each bigger than the last — 4×4 up to 5×6. Clear one to unlock the next.",
       stage: <GridSizesDemo />,
     },
     {
-      caption: "Clear grids fast for a bigger bonus. Five minutes for all five.",
+      caption: "Clear grids fast for a bigger bonus. Three minutes for all four.",
       stage: <SpeedDemo />,
     },
   ];
@@ -291,8 +290,8 @@ export default function MemoryMatch() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five memory grids in one 5-minute session — 4×4, 4×5, 4×6, 5×6,
-          and finally 6×6. Flip two cards at a time; matching pairs stay
+          Four memory grids in one 3-minute session — 4×4, 4×5, 4×6, and
+          finally 5×6. Flip two cards at a time; matching pairs stay
           face-up. Clear each grid to unlock the next.
         </Instructions>
       )}
@@ -547,9 +546,8 @@ const GRID_SIZES: Array<[number, number]> = [
   [4, 5],
   [4, 6],
   [5, 6],
-  [6, 6],
 ];
-const GRID_PHASES = [1300, 1300, 1300, 1300, 1300];
+const GRID_PHASES = [1300, 1300, 1300, 1300];
 
 function MiniGrid({
   cols,
@@ -588,7 +586,7 @@ function MiniGrid({
   );
 }
 
-/** Step 3: the five grids, the active one highlighted on a loop. */
+/** Step 3: the four grids, the active one highlighted on a loop. */
 function GridSizesDemo() {
   const active = useLoopPhase(GRID_PHASES);
   return (
