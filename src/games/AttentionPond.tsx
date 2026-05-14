@@ -134,13 +134,15 @@ function spawnFish(count: number, size: number): Fish[] {
   return fish;
 }
 
-function spawnLilies(count: number): LilyPad[] {
+function spawnLilies(count: number, fishSize: number): LilyPad[] {
   const pads: LilyPad[] = [];
   const margin = 14;
   let attempts = 0;
   while (pads.length < count && attempts < 120) {
     attempts++;
-    const r = 9 + Math.random() * 4;
+    // Sized relative to the fish so one pad covers at most ~1.5 fish — never
+    // two whole fish at once (fish shrink per level, so pads must too).
+    const r = fishSize * (1.2 + Math.random() * 0.5);
     const cx = margin + Math.random() * (BOUNDS.w - margin * 2);
     const cy = margin + Math.random() * (BOUNDS.h - margin * 2);
     // avoid overlap with existing pads
@@ -325,7 +327,7 @@ export default function AttentionPond() {
   const startLevel = useCallback((idx: number) => {
     const lvl = LEVELS[idx];
     const f = spawnFish(lvl.count, fishSizeForLevel(idx));
-    const pads = spawnLilies(idx); // 0, 1, 2, 3, 4 per level
+    const pads = spawnLilies(idx, fishSizeForLevel(idx)); // 0..4 pads per level
     const rds = spawnReeds(idx); // 3, 4, 5, 6, 7 per level
     setFish(f);
     setLilies(pads);
@@ -1484,7 +1486,7 @@ function DemoPond({
   const demoLilies: LilyPad[] =
     mode === "lily"
       ? [
-          { id: 0, cx: 50, cy: 50, r: 14, rotate: 30, flower: true },
+          { id: 0, cx: 50, cy: 50, r: 11, rotate: 30, flower: true },
           { id: 1, cx: 78, cy: 28, r: 9, rotate: 150, flower: false },
         ]
       : [];
