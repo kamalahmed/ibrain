@@ -42,6 +42,25 @@ type LilyPad = {
   cy: number;
   r: number;
   rotate: number; // baseline rotation in degrees
+  flower: boolean;
+};
+
+type ReedBlade = {
+  offset: number; // x offset of the blade base within the clump
+  len: number;
+  lean: number; // overall lean in degrees
+  curve: number; // sideways curve of the tip
+  w: number; // stroke width
+  cattail: boolean;
+};
+
+type Reed = {
+  id: number;
+  x: number; // clump base x
+  y: number; // clump base y (blades grow upward from here)
+  blades: ReedBlade[];
+  sway: number; // sway amplitude in degrees
+  dur: number; // sway duration in seconds
 };
 
 type Ping = {
@@ -110,9 +129,59 @@ function spawnLilies(count: number): LilyPad[] {
       cy,
       r,
       rotate: Math.random() * 360,
+      flower: Math.random() < 0.45,
     });
   }
   return pads;
+}
+
+/**
+ * Reed clumps line the shore (and creep inward on later levels). They are
+ * purely visual cover — fish drift behind them and vanish from sight, so you
+ * have to keep tracking the ones you can't see.
+ */
+function spawnReeds(levelIdx: number): Reed[] {
+  const reeds: Reed[] = [];
+  const count = 3 + levelIdx; // 3 → 7
+  for (let i = 0; i < count; i++) {
+    const edge = Math.random();
+    let x: number;
+    let y: number;
+    if (edge < 0.55) {
+      // bottom shore
+      x = 6 + Math.random() * 88;
+      y = 99 + Math.random() * 4;
+    } else if (edge < 0.78) {
+      // left shore
+      x = -2 + Math.random() * 7;
+      y = 28 + Math.random() * 68;
+    } else {
+      // right shore
+      x = 95 + Math.random() * 7;
+      y = 28 + Math.random() * 68;
+    }
+    const bladeCount = 3 + Math.floor(Math.random() * 4);
+    const blades: ReedBlade[] = [];
+    for (let b = 0; b < bladeCount; b++) {
+      blades.push({
+        offset: (b - (bladeCount - 1) / 2) * 1.7,
+        len: 15 + Math.random() * 17,
+        lean: (Math.random() - 0.5) * 16,
+        curve: (Math.random() - 0.5) * 9,
+        w: 1 + Math.random() * 1,
+        cattail: Math.random() < 0.22,
+      });
+    }
+    reeds.push({
+      id: i,
+      x,
+      y,
+      blades,
+      sway: 2 + Math.random() * 2.5,
+      dur: 3.5 + Math.random() * 2.5,
+    });
+  }
+  return reeds;
 }
 
 export default function AttentionPond() {
@@ -125,6 +194,7 @@ export default function AttentionPond() {
   const [levelIdx, setLevelIdx] = useState(0);
   const [fish, setFish] = useState<Fish[]>([]);
   const [lilies, setLilies] = useState<LilyPad[]>([]);
+  const [reeds, setReeds] = useState<Reed[]>([]);
   const [levelTimeLeft, setLevelTimeLeft] = useState(0);
   const [sessionTimeLeft, setSessionTimeLeft] = useState(SESSION_SECONDS);
   const [score, setScore] = useState(0);
@@ -226,8 +296,10 @@ export default function AttentionPond() {
     const lvl = LEVELS[idx];
     const f = spawnFish(lvl.count);
     const pads = spawnLilies(idx); // 0, 1, 2, 3, 4 per level
+    const rds = spawnReeds(idx); // 3, 4, 5, 6, 7 per level
     setFish(f);
     setLilies(pads);
+    setReeds(rds);
     fishRef.current = f;
     levelPointsRef.current = 0;
     setLevelTimeLeft(lvl.seconds);
@@ -430,7 +502,7 @@ export default function AttentionPond() {
     },
     {
       caption:
-        "Watch out — fish swim under lily pads. They'll reappear on the other side.",
+        "Fish slip under lily pads and behind the reeds — keep tracking the ones you can't see.",
       stage: <DemoPond mode="lily" />,
     },
   ];
@@ -442,9 +514,9 @@ export default function AttentionPond() {
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
           Five ponds in one 5-minute session. Level 1 has 3 fish; by level 5
-          there are 7 fish under 4 lily pads. Tap each fish exactly once —
-          fed fish still look identical, so you have to remember. Clear each
-          pond (all fish fed) to unlock the next.
+          there are 7 fish hiding among lily pads and reeds. Tap each fish
+          exactly once — fed fish still look identical, so you have to
+          remember. Clear each pond (all fish fed) to unlock the next.
         </Instructions>
       )}
 
@@ -509,6 +581,7 @@ export default function AttentionPond() {
               <Pond
                 fish={fish}
                 lilies={lilies}
+                reeds={reeds}
                 pings={pings}
                 onTapFish={tapFish}
                 showOverlay={false}
@@ -536,64 +609,129 @@ export default function AttentionPond() {
   );
 }
 
+/* ---------------- Shared SVG defs ---------------- */
+
+function PondDefs({ idPrefix }: { idPrefix: string }) {
+  return (
+    <defs>
+      <radialGradient id={`${idPrefix}Water`} cx="0.34" cy="0.12" r="1.15">
+        <stop offset="0%" stopColor="#aef0df" />
+        <stop offset="38%" stopColor="#48c2a4" />
+        <stop offset="72%" stopColor="#1c8e76" />
+        <stop offset="100%" stopColor="#0a5644" />
+      </radialGradient>
+      <linearGradient id={`${idPrefix}Depth`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.12" />
+        <stop offset="55%" stopColor="#0a5644" stopOpacity="0" />
+        <stop offset="100%" stopColor="#06342a" stopOpacity="0.55" />
+      </linearGradient>
+      <radialGradient id={`${idPrefix}Vignette`} cx="0.5" cy="0.42" r="0.75">
+        <stop offset="60%" stopColor="#06342a" stopOpacity="0" />
+        <stop offset="100%" stopColor="#052a22" stopOpacity="0.5" />
+      </radialGradient>
+      <radialGradient id={`${idPrefix}Caustic`} cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stopColor="#eafff8" stopOpacity="0.9" />
+        <stop offset="100%" stopColor="#eafff8" stopOpacity="0" />
+      </radialGradient>
+      <linearGradient id={`${idPrefix}FishBody`} x1="0" y1="-1" x2="0" y2="1">
+        <stop offset="0%" stopColor="#cbb6ff" />
+        <stop offset="100%" stopColor="#7e4dff" />
+      </linearGradient>
+      <radialGradient id={`${idPrefix}LilyFill`} cx="0.35" cy="0.32" r="0.85">
+        <stop offset="0%" stopColor="#7ee0bd" />
+        <stop offset="55%" stopColor="#2fb48f" />
+        <stop offset="100%" stopColor="#0c6b52" />
+      </radialGradient>
+      <radialGradient id={`${idPrefix}Flower`} cx="0.5" cy="0.4" r="0.6">
+        <stop offset="0%" stopColor="#fff6fb" />
+        <stop offset="55%" stopColor="#fbb6d4" />
+        <stop offset="100%" stopColor="#ec6fa6" />
+      </radialGradient>
+      <linearGradient id={`${idPrefix}Reed`} x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stopColor="#1f7a52" />
+        <stop offset="100%" stopColor="#76d39a" />
+      </linearGradient>
+      <linearGradient id={`${idPrefix}Grass`} x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stopColor="#0a5e44" />
+        <stop offset="100%" stopColor="#1f9c70" />
+      </linearGradient>
+      <filter
+        id={`${idPrefix}Blur`}
+        x="-50%"
+        y="-50%"
+        width="200%"
+        height="200%"
+      >
+        <feGaussianBlur stdDeviation="2.4" />
+      </filter>
+    </defs>
+  );
+}
+
 /* ---------------- Pond ---------------- */
 
 function Pond({
   fish,
   lilies,
+  reeds,
   pings,
   onTapFish,
   showOverlay,
 }: {
   fish: Fish[];
   lilies: LilyPad[];
+  reeds: Reed[];
   pings: Ping[];
   onTapFish: (id: number, e: React.PointerEvent) => void;
   showOverlay: boolean;
 }) {
   return (
     <div
-      className="relative mx-auto aspect-square w-full max-w-xl overflow-hidden rounded-3xl ring-1 ring-slate-200 dark:ring-slate-800"
-      style={{
-        background:
-          "radial-gradient(120% 120% at 30% 20%, #c7f0e7 0%, #93d8c9 45%, #5dbba7 100%)",
-      }}
+      className="relative mx-auto aspect-square w-full max-w-xl overflow-hidden rounded-3xl ring-1 ring-emerald-900/30 shadow-soft dark:ring-emerald-950"
+      style={{ background: "#0a5644" }}
     >
       <svg
         viewBox="0 0 100 100"
         className="absolute inset-0 h-full w-full"
         preserveAspectRatio="xMidYMid slice"
       >
-        <defs>
-          <linearGradient id="pondFishBody" x1="0" y1="-1" x2="0" y2="1">
-            <stop offset="0%" stopColor="#bfa6ff" />
-            <stop offset="100%" stopColor="#7e4dff" />
-          </linearGradient>
-          <radialGradient id="pondLilyFill" cx="0.35" cy="0.35" r="0.8">
-            <stop offset="0%" stopColor="#5dd3b0" />
-            <stop offset="60%" stopColor="#2fb48f" />
-            <stop offset="100%" stopColor="#0f7a5f" />
-          </radialGradient>
-        </defs>
+        <PondDefs idPrefix="pond" />
 
-        {/* current lines */}
-        <g opacity="0.15" stroke="#0a4a42" strokeWidth="0.2" fill="none">
+        {/* water body + depth shading */}
+        <rect width="100" height="100" fill="url(#pondWater)" />
+        <rect width="100" height="100" fill="url(#pondDepth)" />
+
+        {/* drifting light caustics */}
+        <WaterCaustics idPrefix="pond" />
+
+        {/* gentle surface current lines */}
+        <g opacity="0.16" stroke="#eafff8" strokeWidth="0.25" fill="none">
           <path d="M5 30 Q 40 35 95 25" />
           <path d="M5 60 Q 50 70 95 55" />
           <path d="M8 85 Q 40 80 92 88" />
         </g>
 
+        {/* submerged grass — behind the fish, for depth */}
+        <UnderwaterGrass idPrefix="pond" />
+
         {/* fish layer */}
         <g>
           {fish.map((f) => (
-            <FishGlyph key={f.id} fish={f} onTap={onTapFish} />
+            <FishGlyph key={f.id} fish={f} onTap={onTapFish} idPrefix="pond" />
           ))}
         </g>
 
-        {/* lily pad layer (opaque, on top of fish) */}
+        {/* lily pads — solid leaves the fish slip under */}
         <g>
           {lilies.map((p) => (
-            <LilyPadShape key={p.id} pad={p} />
+            <LilyPadShape key={p.id} pad={p} idPrefix="pond" />
+          ))}
+        </g>
+
+        {/* reed clumps — shore cover the fish hide behind */}
+        <g pointerEvents="none">
+          {reeds.map((r) => (
+            <ReedClump key={r.id} reed={r} idPrefix="pond" />
           ))}
         </g>
 
@@ -603,6 +741,14 @@ function Pond({
             <PingGlyph key={p.id} ping={p} />
           ))}
         </g>
+
+        {/* atmospheric depth at the edges */}
+        <rect
+          width="100"
+          height="100"
+          fill="url(#pondVignette)"
+          pointerEvents="none"
+        />
       </svg>
 
       {showOverlay && (
@@ -620,62 +766,194 @@ function Pond({
   );
 }
 
+/* ---------------- Water caustics ---------------- */
+
+function WaterCaustics({ idPrefix }: { idPrefix: string }) {
+  const blobs = [
+    { cx: 28, cy: 26, rx: 24, ry: 15, dur: 13, dx: 9, dy: 6 },
+    { cx: 72, cy: 58, rx: 27, ry: 17, dur: 17, dx: -11, dy: -7 },
+    { cx: 48, cy: 82, rx: 21, ry: 13, dur: 15, dx: 7, dy: -9 },
+  ];
+  return (
+    <g filter={`url(#${idPrefix}Blur)`} pointerEvents="none">
+      {blobs.map((b, i) => (
+        <motion.ellipse
+          key={i}
+          cx={b.cx}
+          cy={b.cy}
+          rx={b.rx}
+          ry={b.ry}
+          fill={`url(#${idPrefix}Caustic)`}
+          animate={{
+            x: [0, b.dx, 0],
+            y: [0, b.dy, 0],
+            opacity: [0.18, 0.42, 0.18],
+          }}
+          transition={{ duration: b.dur, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
+    </g>
+  );
+}
+
+/* ---------------- Underwater grass (background depth) ---------------- */
+
+function UnderwaterGrass({ idPrefix }: { idPrefix: string }) {
+  // A static row of swaying fronds along the pond floor. Decorative only —
+  // it sits behind the fish, so it never blocks a tap.
+  const blades = [];
+  for (let i = 0; i < 14; i++) {
+    const x = 3 + i * 7 + (i % 2) * 2;
+    const len = 10 + ((i * 37) % 13);
+    const lean = ((i * 53) % 14) - 7;
+    const dur = 4 + ((i * 31) % 30) / 10;
+    blades.push({ x, len, lean, dur, delay: (i % 5) * 0.3 });
+  }
+  return (
+    <g opacity="0.5" pointerEvents="none">
+      {blades.map((b, i) => (
+        <motion.path
+          key={i}
+          d={`M ${b.x} 100 Q ${b.x + b.lean / 2} ${100 - b.len / 2} ${
+            b.x + b.lean
+          } ${100 - b.len}`}
+          stroke={`url(#${idPrefix}Grass)`}
+          strokeWidth="2"
+          strokeLinecap="round"
+          fill="none"
+          style={{ transformOrigin: `${b.x}px 100px` }}
+          animate={{ rotate: [-3, 3, -3] }}
+          transition={{
+            duration: b.dur,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: b.delay,
+          }}
+        />
+      ))}
+    </g>
+  );
+}
+
+/* ---------------- Reed clump (foreground cover) ---------------- */
+
+function ReedClump({ reed, idPrefix }: { reed: Reed; idPrefix: string }) {
+  const { x, y, blades, sway, dur } = reed;
+  return (
+    <motion.g
+      style={{ transformOrigin: `${x}px ${y}px` }}
+      animate={{ rotate: [-sway, sway, -sway] }}
+      transition={{ duration: dur, repeat: Infinity, ease: "easeInOut" }}
+    >
+      {blades.map((b, i) => {
+        const bx = x + b.offset;
+        const tipX = bx + b.lean;
+        const tipY = y - b.len;
+        const ctrlX = bx + b.lean / 2 + b.curve;
+        const ctrlY = y - b.len * 0.55;
+        return (
+          <g key={i}>
+            <path
+              d={`M ${bx} ${y} Q ${ctrlX} ${ctrlY} ${tipX} ${tipY}`}
+              stroke={`url(#${idPrefix}Reed)`}
+              strokeWidth={b.w}
+              strokeLinecap="round"
+              fill="none"
+            />
+            {b.cattail && (
+              <ellipse
+                cx={tipX}
+                cy={tipY + 2.4}
+                rx={b.w * 0.9}
+                ry={2.6}
+                fill="#7c4a23"
+              />
+            )}
+          </g>
+        );
+      })}
+    </motion.g>
+  );
+}
+
 /* ---------------- Fish ---------------- */
 
 function FishGlyph({
   fish,
   onTap,
+  idPrefix,
 }: {
   fish: Fish;
   onTap: (id: number, e: React.PointerEvent) => void;
+  idPrefix: string;
 }) {
   const { x, y, size, rot } = fish;
   const deg = (rot * 180) / Math.PI;
   return (
-    <g
-      data-testid="fish"
-      data-fed={fish.fed ? "1" : "0"}
-      transform={`translate(${x} ${y}) rotate(${deg})`}
-      style={{ cursor: "pointer" }}
-      onPointerDown={(e) => onTap(fish.id, e)}
-      aria-label="Fish"
-    >
-      {/* enlarged invisible hit target */}
-      <circle r={size * 1.6} fill="transparent" />
-      {/* triangular tail */}
-      <polygon
-        points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
-        fill="#7e4dff"
+    <g aria-label="Fish">
+      {/* soft cast shadow on the water, slightly offset down-right */}
+      <ellipse
+        cx={x + 1.4}
+        cy={y + 1.8}
+        rx={size * 1.5}
+        ry={size * 0.85}
+        fill="#06342a"
+        opacity="0.28"
+        pointerEvents="none"
       />
-      {/* teardrop body — ellipse pinched toward the tail */}
-      <path
-        d={`
-          M ${size * 1.35} 0
-          Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
-          Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
-          Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
-          Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
-          Z
-        `}
-        fill="url(#pondFishBody)"
-      />
-      {/* side fin */}
-      <path
-        d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
-        fill="#5925d6"
-        opacity="0.7"
-      />
-      {/* eye */}
-      <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
-      <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
+      <g
+        data-testid="fish"
+        data-fed={fish.fed ? "1" : "0"}
+        transform={`translate(${x} ${y}) rotate(${deg})`}
+        style={{ cursor: "pointer" }}
+        onPointerDown={(e) => onTap(fish.id, e)}
+      >
+        {/* enlarged invisible hit target */}
+        <circle r={size * 1.6} fill="transparent" />
+        {/* triangular tail */}
+        <polygon
+          points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
+          fill="#7e4dff"
+        />
+        {/* teardrop body — ellipse pinched toward the tail */}
+        <path
+          d={`
+            M ${size * 1.35} 0
+            Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
+            Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
+            Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
+            Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
+            Z
+          `}
+          fill={`url(#${idPrefix}FishBody)`}
+        />
+        {/* dorsal highlight */}
+        <path
+          d={`M ${-size * 0.6} ${-size * 0.34} Q ${size * 0.2} ${-size * 0.66} ${size * 0.95} ${-size * 0.18}`}
+          stroke="#ffffff"
+          strokeWidth={size * 0.12}
+          strokeLinecap="round"
+          fill="none"
+          opacity="0.4"
+        />
+        {/* side fin */}
+        <path
+          d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
+          fill="#5925d6"
+          opacity="0.7"
+        />
+        {/* eye */}
+        <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
+        <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
+      </g>
     </g>
   );
 }
 
 /* ---------------- Lily pad ---------------- */
 
-function LilyPadShape({ pad }: { pad: LilyPad }) {
-  const { cx, cy, r, rotate } = pad;
+function LilyPadShape({ pad, idPrefix }: { pad: LilyPad; idPrefix: string }) {
+  const { cx, cy, r, rotate, flower } = pad;
   // classic lily pad: a disc with a V-notch cut out. Notch spans 30°.
   const notchHalf = 15; // degrees
   const a1 = (-notchHalf * Math.PI) / 180;
@@ -691,10 +969,38 @@ function LilyPadShape({ pad }: { pad: LilyPad }) {
       initial={false}
       animate={{ rotate: [rotate - 3, rotate + 3, rotate - 3] }}
       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-      style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: "fill-box" } as React.CSSProperties}
+      style={
+        {
+          transformOrigin: `${cx}px ${cy}px`,
+          transformBox: "fill-box",
+        } as React.CSSProperties
+      }
       transform={`translate(${cx} ${cy})`}
     >
-      <path d={d} fill="url(#pondLilyFill)" stroke="#0d5a47" strokeWidth="0.3" />
+      {/* shadow the pad casts on the water */}
+      <ellipse
+        cx={1.2}
+        cy={1.8}
+        rx={r}
+        ry={r * 0.9}
+        fill="#06342a"
+        opacity="0.28"
+      />
+      <path
+        d={d}
+        fill={`url(#${idPrefix}LilyFill)`}
+        stroke="#0d5a47"
+        strokeWidth="0.3"
+      />
+      {/* rim highlight */}
+      <path
+        d={d}
+        fill="none"
+        stroke="#bdf3df"
+        strokeWidth="0.35"
+        opacity="0.45"
+        transform="scale(0.82)"
+      />
       {/* center veining */}
       <path
         d={`M 0 0 L ${r * 0.75} 0`}
@@ -714,6 +1020,22 @@ function LilyPadShape({ pad }: { pad: LilyPad }) {
         strokeWidth="0.2"
         opacity="0.35"
       />
+      {flower && (
+        <g transform={`rotate(${-rotate})`}>
+          {[0, 60, 120, 180, 240, 300].map((a) => (
+            <ellipse
+              key={a}
+              cx={0}
+              cy={-2}
+              rx={1.5}
+              ry={3}
+              fill={`url(#${idPrefix}Flower)`}
+              transform={`rotate(${a})`}
+            />
+          ))}
+          <circle r={1.5} fill="#fde68a" />
+        </g>
+      )}
     </motion.g>
   );
 }
@@ -773,9 +1095,7 @@ function Bucket({
     <div className="flex items-center justify-center">
       <motion.div
         key={shakeKey}
-        animate={
-          shakeKey > 0 ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }
-        }
+        animate={shakeKey > 0 ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
         transition={{ duration: 0.35, ease: "easeInOut" }}
         className="flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-2 ring-1 ring-slate-200 shadow-soft dark:bg-slate-900/60 dark:ring-slate-700"
         aria-live="polite"
@@ -844,8 +1164,25 @@ function DemoPond({
   const demoLilies: LilyPad[] =
     mode === "lily"
       ? [
-          { id: 0, cx: 50, cy: 50, r: 14, rotate: 30 },
-          { id: 1, cx: 78, cy: 28, r: 9, rotate: 150 },
+          { id: 0, cx: 50, cy: 50, r: 14, rotate: 30, flower: true },
+          { id: 1, cx: 78, cy: 28, r: 9, rotate: 150, flower: false },
+        ]
+      : [];
+  const demoReeds: Reed[] =
+    mode === "lily"
+      ? [
+          {
+            id: 0,
+            x: 16,
+            y: 100,
+            sway: 3,
+            dur: 4,
+            blades: [
+              { offset: -2, len: 26, lean: -6, curve: 4, w: 1.6, cattail: true },
+              { offset: 0, len: 32, lean: 2, curve: -3, w: 1.8, cattail: false },
+              { offset: 2.4, len: 22, lean: 8, curve: 3, w: 1.4, cattail: false },
+            ],
+          },
         ]
       : [];
 
@@ -861,24 +1198,15 @@ function DemoPond({
   return (
     <div className="flex flex-col items-center gap-3">
       <div
-        className="relative aspect-square w-full max-w-sm overflow-hidden rounded-3xl ring-1 ring-slate-200 dark:ring-slate-800"
-        style={{
-          background:
-            "radial-gradient(120% 120% at 30% 20%, #c7f0e7 0%, #93d8c9 60%, #5dbba7 100%)",
-        }}
+        className="relative aspect-square w-full max-w-sm overflow-hidden rounded-3xl ring-1 ring-emerald-900/30"
+        style={{ background: "#0a5644" }}
       >
         <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full">
-          <defs>
-            <linearGradient id="demoFishBody" x1="0" y1="-1" x2="0" y2="1">
-              <stop offset="0%" stopColor="#bfa6ff" />
-              <stop offset="100%" stopColor="#7e4dff" />
-            </linearGradient>
-            <radialGradient id="demoLilyFill" cx="0.35" cy="0.35" r="0.8">
-              <stop offset="0%" stopColor="#5dd3b0" />
-              <stop offset="60%" stopColor="#2fb48f" />
-              <stop offset="100%" stopColor="#0f7a5f" />
-            </radialGradient>
-          </defs>
+          <PondDefs idPrefix="demo" />
+          <rect width="100" height="100" fill="url(#demoWater)" />
+          <rect width="100" height="100" fill="url(#demoDepth)" />
+          <WaterCaustics idPrefix="demo" />
+          <UnderwaterGrass idPrefix="demo" />
           <g>
             {fish.map((f) => (
               <DemoFish key={f.id} fish={f} />
@@ -886,14 +1214,23 @@ function DemoPond({
           </g>
           <g>
             {demoLilies.map((p) => (
-              <DemoLily key={p.id} pad={p} />
+              <LilyPadShape key={p.id} pad={p} idPrefix="demo" />
             ))}
           </g>
+          <g pointerEvents="none">
+            {demoReeds.map((r) => (
+              <ReedClump key={r.id} reed={r} idPrefix="demo" />
+            ))}
+          </g>
+          <rect
+            width="100"
+            height="100"
+            fill="url(#demoVignette)"
+            pointerEvents="none"
+          />
         </svg>
       </div>
-      {mode === "bucket" && (
-        <Bucket ready progress={1} shakeKey={0} />
-      )}
+      {mode === "bucket" && <Bucket ready progress={1} shakeKey={0} />}
       {mode === "identical" && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Can you tell which fish has already been fed? Neither can anyone else.
@@ -907,47 +1244,39 @@ function DemoFish({ fish }: { fish: Fish }) {
   const { x, y, size, rot } = fish;
   const deg = (rot * 180) / Math.PI;
   return (
-    <g transform={`translate(${x} ${y}) rotate(${deg})`}>
-      <polygon
-        points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
-        fill="#7e4dff"
+    <g>
+      <ellipse
+        cx={x + 1.4}
+        cy={y + 1.8}
+        rx={size * 1.5}
+        ry={size * 0.85}
+        fill="#06342a"
+        opacity="0.28"
       />
-      <path
-        d={`
-          M ${size * 1.35} 0
-          Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
-          Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
-          Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
-          Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
-          Z
-        `}
-        fill="url(#demoFishBody)"
-      />
-      <path
-        d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
-        fill="#5925d6"
-        opacity="0.7"
-      />
-      <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
-      <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
-    </g>
-  );
-}
-
-function DemoLily({ pad }: { pad: LilyPad }) {
-  const { cx, cy, r, rotate } = pad;
-  const notchHalf = 15;
-  const a1 = (-notchHalf * Math.PI) / 180;
-  const a2 = (notchHalf * Math.PI) / 180;
-  const p1x = r * Math.cos(a1);
-  const p1y = r * Math.sin(a1);
-  const p2x = r * Math.cos(a2);
-  const p2y = r * Math.sin(a2);
-  const d = `M 0 0 L ${p2x} ${p2y} A ${r} ${r} 0 1 0 ${p1x} ${p1y} Z`;
-  return (
-    <g transform={`translate(${cx} ${cy}) rotate(${rotate})`}>
-      <path d={d} fill="url(#demoLilyFill)" stroke="#0d5a47" strokeWidth="0.3" />
-      <path d={`M 0 0 L ${r * 0.75} 0`} stroke="#0d5a47" strokeWidth="0.25" opacity="0.5" />
+      <g transform={`translate(${x} ${y}) rotate(${deg})`}>
+        <polygon
+          points={`${-size * 1.15},0 ${-size * 1.9},${-size * 0.75} ${-size * 1.9},${size * 0.75}`}
+          fill="#7e4dff"
+        />
+        <path
+          d={`
+            M ${size * 1.35} 0
+            Q ${size * 0.9} ${-size * 0.75} 0 ${-size * 0.62}
+            Q ${-size * 1.0} ${-size * 0.45} ${-size * 1.15} 0
+            Q ${-size * 1.0} ${size * 0.45} 0 ${size * 0.62}
+            Q ${size * 0.9} ${size * 0.75} ${size * 1.35} 0
+            Z
+          `}
+          fill="url(#demoFishBody)"
+        />
+        <path
+          d={`M ${-size * 0.1} ${size * 0.3} Q ${-size * 0.35} ${size * 0.75} ${size * 0.25} ${size * 0.55} Z`}
+          fill="#5925d6"
+          opacity="0.7"
+        />
+        <circle cx={size * 0.75} cy={-size * 0.22} r={size * 0.22} fill="#ffffff" />
+        <circle cx={size * 0.82} cy={-size * 0.22} r={size * 0.11} fill="#0f172a" />
+      </g>
     </g>
   );
 }
