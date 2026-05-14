@@ -3,9 +3,14 @@ import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
 import { Sparkline, computeTrendPct } from "@/components/Sparkline";
 import { CountUp } from "@/components/CountUp";
-import { GAMES, type GameId } from "@/lib/games";
+import { GAMES, DOMAINS, DOMAIN_ORDER, type GameId } from "@/lib/games";
 import { formatScore } from "@/lib/scoring";
-import { selectBrainScore, useStore } from "@/store/useStore";
+import {
+  selectBrainScore,
+  selectDomainScores,
+  useStore,
+} from "@/store/useStore";
+import { fadeUp } from "@/lib/motion";
 import { todayKey } from "@/lib/date";
 import { DAILY_GAMES } from "@/daily/types";
 
@@ -19,6 +24,7 @@ export default function Dashboard() {
   const bestDaily = useStore((s) => s.bestDaily);
   const lastDailyDate = useStore((s) => s.lastDailyDate);
   const dailyResults = useStore((s) => s.dailyResults);
+  const domainScores = useStore(selectDomainScores);
   const doneToday = lastDailyDate === todayKey();
   const recent = history.slice(0, 5);
   const totalPlayed = history.length;
@@ -128,7 +134,69 @@ export default function Dashboard() {
         </motion.div>
       </section>
 
-      <section aria-label="Games" className="mt-8">
+      <section aria-label="Cognitive areas" className="mt-10">
+        <div className="mb-4 flex items-end justify-between">
+          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+            Cognitive areas
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Where your training is landing.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {DOMAIN_ORDER.map((id, i) => {
+            const meta = DOMAINS[id];
+            const ds = domainScores[id];
+            const started = ds && ds.played > 0;
+            return (
+              <motion.div
+                key={id}
+                initial={fadeUp.initial}
+                animate={fadeUp.animate}
+                transition={{ ...fadeUp.transition, delay: i * 0.05 }}
+                className="card p-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-bold text-slate-900 dark:text-white">
+                    {meta.name}
+                  </h3>
+                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                    {started ? ds.score : "—"}
+                    <span className="text-xs font-semibold text-slate-400">
+                      {" "}
+                      / 100
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                  <motion.div
+                    className={`h-full rounded-full bg-gradient-to-r ${meta.accent}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: started ? `${ds.score}%` : "0%" }}
+                    transition={{
+                      duration: 0.7,
+                      ease: [0.22, 1, 0.36, 1],
+                      delay: 0.1 + i * 0.05,
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {meta.blurb}
+                </p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+                  {started
+                    ? `${ds.played} / ${ds.total} game${
+                        ds.total === 1 ? "" : "s"
+                      } trained`
+                    : `${ds.total} game${ds.total === 1 ? "" : "s"} — not started`}
+                </p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section aria-label="Games" className="mt-10">
         <div className="mb-4 flex items-end justify-between">
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
             Train one game

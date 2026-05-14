@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { GameId } from "@/lib/games";
+import type { CognitiveDomain, GameId } from "@/lib/games";
 import { GAMES } from "@/lib/games";
 import { normalizeScore } from "@/lib/scoring";
 import { daysBetween, todayKey } from "@/lib/date";
@@ -239,4 +239,44 @@ export function selectBrainScore(state: State): number {
   if (parts.length === 0) return 0;
   const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
   return Math.round(avg);
+}
+
+export type DomainScore = {
+  /** Average normalized 0-100 across played games in this domain. */
+  score: number;
+  /** Games in this domain the player has a best for. */
+  played: number;
+  /** Total games in this domain. */
+  total: number;
+};
+
+/**
+ * Per-cognitive-area score: average of normalized bests for the games that
+ * make up each domain. Domains with no plays yet report score 0.
+ */
+export function selectDomainScores(
+  state: State
+): Record<CognitiveDomain, DomainScore> {
+  const acc = {} as Record<
+    CognitiveDomain,
+    { sum: number; played: number; total: number }
+  >;
+  for (const g of GAMES) {
+    const bucket = (acc[g.domain] ??= { sum: 0, played: 0, total: 0 });
+    bucket.total += 1;
+    const best = state.bestScores[g.id];
+    if (typeof best === "number") {
+      bucket.sum += normalizeScore(g.id, best);
+      bucket.played += 1;
+    }
+  }
+  const out = {} as Record<CognitiveDomain, DomainScore>;
+  for (const [domain, b] of Object.entries(acc)) {
+    out[domain as CognitiveDomain] = {
+      score: b.played > 0 ? Math.round(b.sum / b.played) : 0,
+      played: b.played,
+      total: b.total,
+    };
+  }
+  return out;
 }
