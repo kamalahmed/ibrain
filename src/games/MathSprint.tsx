@@ -32,14 +32,14 @@ type Problem = {
 type InputMode = "choice" | "typed";
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   requiredCorrect: number;
   inputMode: InputMode;
   make: () => Omit<Problem, "choices">;
 };
 
-const SESSION_SECONDS = 300; // 5 minutes total
+const SESSION_SECONDS = 180; // 3-minute session
 const WRONG_PENALTY_S = 3;
 const POINTS_PER_CORRECT = 10;
 const LEVEL_CLEAR_BONUS = 25;
@@ -151,31 +151,24 @@ const LEVELS: Level[] = [
     name: "Warm-up",
     requiredCorrect: 5,
     inputMode: "choice",
-    make: () => makeAddSub(20),
+    make: () => makeAddSub(30),
   },
   {
     id: 2,
-    name: "Bigger sums",
-    requiredCorrect: 5,
-    inputMode: "choice",
-    make: () => makeAddSub(99),
-  },
-  {
-    id: 3,
     name: "Times tables",
     requiredCorrect: 5,
     inputMode: "choice",
     make: () => makeMul(12),
   },
   {
-    id: 4,
+    id: 3,
     name: "All mixed",
     requiredCorrect: 6,
     inputMode: "choice",
     make: makeMixed,
   },
   {
-    id: 5,
+    id: 4,
     name: "Type it",
     requiredCorrect: 6,
     inputMode: "typed",
@@ -388,15 +381,15 @@ export default function MathSprint() {
 
   const tutorialSteps: TutorialStep[] = [
     {
-      caption: "5 levels in 5 minutes. Clear each level to unlock the next.",
+      caption: "4 levels in 3 minutes. Clear each level to unlock the next.",
       stage: (
         <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={5} current={1} cleared={0} />
+          <LevelProgress total={4} current={1} cleared={0} />
         </div>
       ),
     },
     {
-      caption: "Levels 1–4: tap the right answer from four choices.",
+      caption: "Levels 1–3: tap the right answer from four choices.",
       stage: (
         <div className="mx-auto max-w-sm space-y-2">
           <div className="grid place-items-center rounded-2xl bg-white/80 p-4 text-4xl font-black text-slate-900 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-white dark:ring-slate-800">
@@ -450,7 +443,7 @@ export default function MathSprint() {
     },
     {
       caption:
-        "Level 5: no choices — type the answer. Wrong answers cost 3 seconds.",
+        "Level 4: no choices — type the answer. Wrong answers cost 3 seconds.",
       stage: (
         <div className="mx-auto max-w-sm space-y-2">
           <div className="grid place-items-center rounded-2xl bg-white/80 p-4 text-4xl font-black text-slate-900 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-white dark:ring-slate-800">
@@ -473,9 +466,9 @@ export default function MathSprint() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five levels, one 5-minute timer. Clear each level by answering
+          Four levels, one 3-minute timer. Clear each level by answering
           enough problems correctly — tap the answer from four choices on
-          levels 1–4, then type it on level 5. Wrong answers cost{" "}
+          levels 1–3, then type it on level 4. Wrong answers cost{" "}
           {WRONG_PENALTY_S}s.
         </Instructions>
       )}

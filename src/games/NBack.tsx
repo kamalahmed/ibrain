@@ -19,7 +19,7 @@ type Phase =
   | "done";
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   n: 1 | 2 | 3;
   total: number;
@@ -28,7 +28,7 @@ type Level = {
   hitsToClear: number;
 };
 
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const POINTS_HIT = 15;
 const POINTS_CORRECT_REJECT = 3;
@@ -36,11 +36,10 @@ const POINTS_FALSE_ALARM = -5;
 const LEVEL_CLEAR_BONUS = 75;
 
 const LEVELS: Level[] = [
-  { id: 1, name: "1-back", n: 1, total: 15, intervalMs: 2400, hitsToClear: 3 },
-  { id: 2, name: "2-back", n: 2, total: 18, intervalMs: 2200, hitsToClear: 3 },
-  { id: 3, name: "2-back fast", n: 2, total: 22, intervalMs: 2000, hitsToClear: 4 },
-  { id: 4, name: "3-back", n: 3, total: 22, intervalMs: 1900, hitsToClear: 3 },
-  { id: 5, name: "3-back fast", n: 3, total: 24, intervalMs: 1700, hitsToClear: 4 },
+  { id: 1, name: "1-back", n: 1, total: 14, intervalMs: 2300, hitsToClear: 3 },
+  { id: 2, name: "2-back", n: 2, total: 18, intervalMs: 2100, hitsToClear: 3 },
+  { id: 3, name: "3-back", n: 3, total: 20, intervalMs: 1900, hitsToClear: 3 },
+  { id: 4, name: "3-back fast", n: 3, total: 22, intervalMs: 1700, hitsToClear: 4 },
 ];
 
 function genSequence(total: number, n: number): string[] {
@@ -331,8 +330,8 @@ export default function NBack() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five n-back levels in one 5-minute session. Level 1 is 1-back;
-          by level 5 you're on 3-back, faster. Tap Match (or press space)
+          Four n-back levels in one 3-minute session. Level 1 is 1-back;
+          by level 4 you're on 3-back, faster. Tap Match (or press space)
           whenever the current letter matches the one N steps ago.
         </Instructions>
       )}

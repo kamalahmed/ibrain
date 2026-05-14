@@ -23,7 +23,7 @@ const BOUNDS = { w: 100, h: 100 };
 const BUCKET_REFILL_MS = 2000;
 const PING_LIFE_MS = 850;
 const GRAIN_LIFE_MS = 460;
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const LEVEL_CLEAR_BONUS = 50;
 
 /** Body palette per level — the fish change colour as the ponds get harder. */
@@ -95,20 +95,19 @@ type Grain = {
 };
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   count: number;
   /** Soft target for the speed bonus — NOT a deadline; the only clock is the
-   *  5-minute session timer. */
+   *  3-minute session timer. */
   targetSeconds: number;
 };
 
 const LEVELS: Level[] = [
-  { id: 1, name: "3 fish", count: 3, targetSeconds: 30 },
-  { id: 2, name: "4 fish", count: 4, targetSeconds: 35 },
-  { id: 3, name: "5 fish", count: 5, targetSeconds: 40 },
-  { id: 4, name: "6 fish", count: 6, targetSeconds: 45 },
-  { id: 5, name: "7 fish", count: 7, targetSeconds: 50 },
+  { id: 1, name: "3 fish", count: 3, targetSeconds: 26 },
+  { id: 2, name: "4 fish", count: 4, targetSeconds: 32 },
+  { id: 3, name: "5 fish", count: 5, targetSeconds: 38 },
+  { id: 4, name: "6 fish", count: 6, targetSeconds: 44 },
 ];
 
 /** Fish shrink as later levels add more of them, so a crowded pond still fits. */
@@ -295,7 +294,7 @@ export default function AttentionPond() {
   );
 
   // Called only when every fish in the level has been fed — the level never
-  // advances on its own. The 5-minute session timer is the only clock.
+  // advances on its own. The 3-minute session timer is the only clock.
   const advanceLevel = useCallback(
     () => {
       stopLoop();
@@ -562,8 +561,8 @@ export default function AttentionPond() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five ponds in one 5-minute session. Level 1 has 3 fish; by level 5
-          there are 7 fish hiding among lily pads and reeds. Tap each fish
+          Four ponds in one 3-minute session. Level 1 has 3 fish; by level 4
+          there are 6 fish hiding among lily pads and reeds. Tap each fish
           exactly once — fed fish still look identical, so you have to
           remember. Clear each pond (all fish fed) to unlock the next.
         </Instructions>

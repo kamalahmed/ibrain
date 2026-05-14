@@ -4,35 +4,37 @@ import type { GameId } from "./games";
  * Normalize a raw game score into a 0–100 "brain score" component.
  * Targets are rough skill anchors; values are clamped.
  */
+// Anchors are calibrated for the 3-minute, 4-level sessions — a strong run of
+// each game maps to ~100. They are deliberately rough.
 export function normalizeScore(id: GameId, raw: number): number {
   switch (id) {
     case "reaction": {
-      // session points, higher is better. 2500 pts ≈ strong session → 100
-      return clamp((raw / 2500) * 100);
-    }
-    case "memory": {
-      // session points, higher is better. 1500 pts ≈ strong run → 100
+      // 1500 pts ≈ strong session → 100
       return clamp((raw / 1500) * 100);
     }
-    case "nback": {
-      // session points, higher is better. 900 pts ≈ cleared most levels with good hits → 100
+    case "memory": {
+      // 900 pts ≈ strong run → 100
       return clamp((raw / 900) * 100);
     }
+    case "nback": {
+      // 550 pts ≈ cleared most levels with good hits → 100
+      return clamp((raw / 550) * 100);
+    }
     case "math": {
-      // session points, higher is better. 400 pts ≈ cleared 4+ levels → 100
-      return clamp((raw / 400) * 100);
+      // 240 pts ≈ cleared most levels → 100
+      return clamp((raw / 240) * 100);
     }
     case "schulte": {
-      // session points, higher is better. 1200 session pts ≈ strong run → 100
-      return clamp((raw / 1200) * 100);
+      // 720 session pts ≈ strong run → 100
+      return clamp((raw / 720) * 100);
     }
     case "pond": {
-      // session points, higher is better. 2500 pts ≈ strong run → 100
-      return clamp((raw / 2500) * 100);
+      // 1500 pts ≈ strong run → 100
+      return clamp((raw / 1500) * 100);
     }
     case "stroop": {
-      // session points, higher is better. 5000 pts ≈ strong run → 100
-      return clamp((raw / 5000) * 100);
+      // 3000 pts ≈ strong run → 100
+      return clamp((raw / 3000) * 100);
     }
   }
 }

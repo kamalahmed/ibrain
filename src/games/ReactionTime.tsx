@@ -44,7 +44,7 @@ type TrialResult = {
 };
 
 type Level = {
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   name: string;
   rule: Rule;
   trialCount: number;
@@ -55,7 +55,7 @@ type Level = {
   noTargetPct: number;
 };
 
-const SESSION_SECONDS = 300;
+const SESSION_SECONDS = 180; // 3-minute session
 const LEVEL_CLEAR_BONUS = 75;
 const INTER_STIMULUS_MS = 300;
 const NOGO_CORRECT_BONUS = 40;
@@ -72,12 +72,6 @@ const ruleAnyCircle: Rule = {
 const ruleAnyGreen: Rule = {
   label: "Tap any GREEN",
   isTarget: (s) => s.color === "green",
-  shapes: ["circle", "square", "triangle"],
-  colors: ["green", "red", "yellow", "blue"],
-};
-const ruleAnySquare: Rule = {
-  label: "Tap any SQUARE",
-  isTarget: (s) => s.shape === "square",
   shapes: ["circle", "square", "triangle"],
   colors: ["green", "red", "yellow", "blue"],
 };
@@ -99,8 +93,8 @@ const LEVELS: Level[] = [
     id: 1,
     name: "Any circle",
     rule: ruleAnyCircle,
-    trialCount: 24,
-    requiredCorrect: 18,
+    trialCount: 20,
+    requiredCorrect: 15,
     startWindowMs: 2400,
     endWindowMs: 1900,
     noTargetPct: 0,
@@ -109,38 +103,28 @@ const LEVELS: Level[] = [
     id: 2,
     name: "Any green",
     rule: ruleAnyGreen,
-    trialCount: 28,
-    requiredCorrect: 21,
+    trialCount: 24,
+    requiredCorrect: 18,
     startWindowMs: 2100,
     endWindowMs: 1700,
     noTargetPct: 0,
   },
   {
     id: 3,
-    name: "Any square",
-    rule: ruleAnySquare,
-    trialCount: 30,
-    requiredCorrect: 22,
-    startWindowMs: 1900,
-    endWindowMs: 1500,
-    noTargetPct: 0,
-  },
-  {
-    id: 4,
     name: "Any red",
     rule: ruleAnyRed,
-    trialCount: 32,
-    requiredCorrect: 22,
+    trialCount: 26,
+    requiredCorrect: 18,
     startWindowMs: 1700,
     endWindowMs: 1300,
     noTargetPct: 0.15,
   },
   {
-    id: 5,
+    id: 4,
     name: "Green circle only",
     rule: ruleGreenCircleOnly,
-    trialCount: 36,
-    requiredCorrect: 23,
+    trialCount: 30,
+    requiredCorrect: 19,
     startWindowMs: 1500,
     endWindowMs: 1000,
     noTargetPct: 0.25,
@@ -566,7 +550,7 @@ export default function ReactionTime() {
     <GameShell game={game}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Five reaction levels in one 5-minute session. Each trial shows
+          Four reaction levels in one 3-minute session. Each trial shows
           three options — tap the one that matches the level's rule, or
           hold when none of them do. Rules shift between shape and colour,
           and the pace tightens as you climb.
