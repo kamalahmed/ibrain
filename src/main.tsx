@@ -14,3 +14,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Register the service worker for offline play (production builds only —
+// in dev it would cache stale assets and get in the way).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Offline support is best-effort; ignore registration failures.
+    });
+  });
+}
