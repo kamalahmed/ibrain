@@ -4,8 +4,15 @@ import { Link } from "react-router-dom";
 import { GameCard } from "@/components/GameCard";
 import { Sparkline, computeTrendPct } from "@/components/Sparkline";
 import { CountUp } from "@/components/CountUp";
-import { GAMES, DOMAINS, DOMAIN_ORDER, type GameId } from "@/lib/games";
-import { formatScore } from "@/lib/scoring";
+import {
+  GAMES,
+  DOMAINS,
+  DOMAIN_ORDER,
+  type CognitiveDomain,
+  type GameId,
+  type GameMeta,
+} from "@/lib/games";
+import { formatScore, normalizeScore } from "@/lib/scoring";
 import {
   selectBrainScore,
   computeDomainScores,
@@ -46,6 +53,40 @@ export default function Dashboard() {
     {} as Record<GameId, number[]>
   );
 
+  // Most recent session timestamp per game.
+  const lastPlayedByGame: Partial<Record<GameId, number>> = {};
+  for (const h of history) {
+    if (lastPlayedByGame[h.game] === undefined) {
+      lastPlayedByGame[h.game] = h.playedAt;
+    }
+  }
+
+  // Coach's pick: the game in your weakest cognitive area — untrained areas
+  // first, then the lowest-scoring one. Within the area, the game you've
+  // trained least.
+  const coachPick = useMemo<GameMeta | null>(() => {
+    let target: CognitiveDomain | null = null;
+    let targetRank = Infinity;
+    for (const id of DOMAIN_ORDER) {
+      const ds = domainScores[id];
+      const rank = ds.played === 0 ? -1 : ds.score;
+      if (rank < targetRank) {
+        targetRank = rank;
+        target = id;
+      }
+    }
+    if (target === null) return null;
+    const gameRank = (g: GameMeta) => {
+      const best = bestScores[g.id];
+      return best === undefined ? -1 : normalizeScore(g.id, best);
+    };
+    return (
+      GAMES.filter((g) => g.domain === target).sort(
+        (a, b) => gameRank(a) - gameRank(b)
+      )[0] ?? null
+    );
+  }, [domainScores, bestScores]);
+
   // Daily totals (oldest → newest), last 14, non-practice only
   const dailyTrend = dailyResults
     .filter((r) => !r.isPractice)
@@ -60,21 +101,23 @@ export default function Dashboard() {
         <StatCard
           label="Brain score"
           value={brainScore}
-          sub="avg of your bests"
+          sub="average of your best game ratings (0–100)"
           highlight
           animate
         />
         <StatCard
-          label="Daily streak"
+          label="Training streak"
           value={streak}
-          sub={streak === 1 ? "day" : "days"}
+          sub={
+            (streak === 1 ? "day" : "days") + " in a row — any game counts"
+          }
           icon="🔥"
           flame
         />
         <StatCard
-          label="Games played"
+          label="Sessions"
           value={totalPlayed}
-          sub="total sessions"
+          sub="games completed all-time"
           animate
         />
       </section>
@@ -100,10 +143,11 @@ export default function Dashboard() {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                 <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
-                  Streak <strong>{dailyStreak}</strong> {dailyStreak === 1 ? "day" : "days"}
+                  Challenge streak <strong>{dailyStreak}</strong>{" "}
+                  {dailyStreak === 1 ? "day" : "days"}
                 </span>
                 <span className="rounded-xl bg-white/15 px-3 py-1 backdrop-blur">
-                  Best <strong>{bestDaily}</strong> pts
+                  Challenge best <strong>{bestDaily}</strong> pts
                 </span>
                 {dailyTrend.length >= 1 && (
                   <span
@@ -206,9 +250,27 @@ export default function Dashboard() {
             Train one game
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Full 5-level session for any game.
+            Four levels, ~3 minutes each.
           </p>
         </div>
+        {coachPick && (
+          <p
+            className="mb-4 text-sm text-slate-600 dark:text-slate-300"
+            data-testid="coach-pick"
+          >
+            <span className="font-bold text-brand-600 dark:text-brand-300">
+              ★ Coach's pick:
+            </span>{" "}
+            {coachPick.name} — your{" "}
+            <span className="font-semibold">
+              {DOMAINS[coachPick.domain].name}
+            </span>{" "}
+            area {domainScores[coachPick.domain].played === 0
+              ? "hasn't been trained yet"
+              : "could use a boost"}
+            .
+          </p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {GAMES.map((g) => (
             <GameCard
@@ -216,6 +278,8 @@ export default function Dashboard() {
               game={g}
               best={bestScores[g.id]}
               history={perGameHistory[g.id]}
+              lastPlayedAt={lastPlayedByGame[g.id]}
+              recommended={coachPick?.id === g.id}
             />
           ))}
         </div>
