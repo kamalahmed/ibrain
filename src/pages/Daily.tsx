@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useStore } from "@/store/useStore";
 import { Confetti } from "@/components/Confetti";
+import { GameArt } from "@/components/GameArt";
 import { DAILY_GAMES } from "@/daily/types";
 import { ReactionMini } from "@/daily/ReactionMini";
 import { MathMini } from "@/daily/MathMini";
@@ -164,7 +165,9 @@ export default function Daily() {
           <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3 text-sm">
               <div>
-                <span className="text-slate-500 dark:text-slate-400">Streak</span>{" "}
+                <span className="text-slate-500 dark:text-slate-400">
+                  Challenge streak
+                </span>{" "}
                 <span className="font-bold text-slate-900 dark:text-white">
                   {dailyStreak} {dailyStreak === 1 ? "day" : "days"}
                 </span>
@@ -224,13 +227,15 @@ export default function Daily() {
                 className="mx-auto grid min-h-[50vh] max-w-md place-items-center rounded-3xl bg-gradient-to-br from-brand-500 to-accent-teal p-6 text-center text-white shadow-soft"
                 data-testid="daily-transition"
               >
-                <div>
+                <div className="w-full">
                   <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
                     Up next
                   </p>
-                  <div className="mt-2 text-6xl" aria-hidden>
-                    {currentSlot.emoji}
-                  </div>
+                  <GameArt
+                    id={currentSlot.id}
+                    animated
+                    className="mx-auto mt-2 h-36 w-full max-w-[16rem]"
+                  />
                   <p className="mt-2 text-2xl font-black">{currentSlot.label}</p>
                   <p className="mt-2 text-sm text-white/90">
                     Game {stepIdx + 1} of {DAILY_GAMES.length}

@@ -7,6 +7,7 @@ import { ResultsScreen } from "@/components/ResultsScreen";
 import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { LevelProgress } from "@/components/LevelProgress";
 import { LevelComplete } from "@/components/LevelComplete";
+import { GameHUD } from "@/components/GameHUD";
 import { getGame } from "@/lib/games";
 import { useStore } from "@/store/useStore";
 
@@ -304,14 +305,14 @@ export default function NBack() {
       stage: <NBackDemo letters={["K", "R", "K"]} arrow="2" matched />,
     },
     {
-      caption: "Levels 4–5 are 3-back — and faster.",
+      caption: "Level 4 is 3-back again — but faster.",
       stage: <NBackDemo letters={["K", "R", "T", "K"]} arrow="3" matched />,
     },
     {
       caption: "Tap Match (or Space) only when it's a match. Wrong taps cost points.",
       stage: (
         <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={5} current={1} cleared={0} />
+          <LevelProgress total={4} current={1} cleared={0} />
         </div>
       ),
     },
@@ -327,7 +328,7 @@ export default function NBack() {
       : "ring-slate-200 dark:ring-slate-800";
 
   return (
-    <GameShell game={game}>
+    <GameShell game={game} compact={phase === "playing" || phase === "levelDone"}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
           Four n-back levels in one 3-minute session. Level 1 is 1-back;
@@ -344,30 +345,14 @@ export default function NBack() {
 
       {(phase === "playing" || phase === "levelDone") && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <LevelProgress
-              total={LEVELS.length}
-              current={levelIdx + 1}
-              cleared={clearedRef.current}
-              label="Level"
-            />
-            <div className="flex items-center gap-2">
-              <span className="chip" data-testid="score">
-                {score} pts
-              </span>
-              <span
-                className={
-                  "chip " +
-                  (timeLeft <= 15
-                    ? "bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-800"
-                    : "")
-                }
-                data-testid="timer"
-              >
-                {formatTime(timeLeft)}
-              </span>
-            </div>
-          </div>
+          <GameHUD
+            levelTotal={LEVELS.length}
+            levelCurrent={levelIdx + 1}
+            levelsCleared={clearedRef.current}
+            score={score}
+            timeLeft={timeLeft}
+            sessionSeconds={SESSION_SECONDS}
+          />
 
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>
@@ -493,8 +478,3 @@ function NBackDemo({
   );
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
