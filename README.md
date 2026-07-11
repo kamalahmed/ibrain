@@ -1,6 +1,6 @@
 # 🧠 iBrain — Brain Training Web App
 
-A small Lumosity-style brain training app built with **Vite + React + TypeScript + Tailwind**. Ships five mini-games, a daily streak, a rolled-up "Brain Score", dark mode and local-storage persistence — no backend required.
+A small Lumosity-style brain training app built with **Vite + React + TypeScript + Tailwind**. Ships seven mini-games with hand-drawn SVG previews, a daily challenge, training streaks, a rolled-up "Brain Score" across five cognitive areas, dark mode and local-storage persistence — no backend required.
 
 ![iBrain](./public/favicon.svg)
 

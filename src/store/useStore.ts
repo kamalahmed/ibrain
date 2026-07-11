@@ -61,6 +61,17 @@ type Actions = {
 const MAX_HISTORY = 50;
 const MAX_DAILY_HISTORY = 60;
 
+/** Consecutive-day streak bump shared by single games and the daily challenge. */
+function advanceStreak(
+  last: string | null,
+  streak: number,
+  today: string
+): number {
+  if (last === null) return 1;
+  if (last === today) return streak; // already counted today
+  return daysBetween(last, today) === 1 ? streak + 1 : 1;
+}
+
 const initial: State = {
   bestScores: {},
   history: [],
@@ -89,15 +100,7 @@ export const useStore = create<State & Actions>()(
           (meta.lowerIsBetter ? score < prevBest : score > prevBest);
 
         const today = todayKey();
-        const last = get().lastPlayed;
-        let streak = get().streak;
-        if (last === null) streak = 1;
-        else if (last === today) {
-          // already counted today
-        } else {
-          const diff = daysBetween(last, today);
-          streak = diff === 1 ? streak + 1 : 1;
-        }
+        const streak = advanceStreak(get().lastPlayed, get().streak, today);
 
         const record: PlayRecord = {
           id: crypto.randomUUID(),
@@ -176,13 +179,10 @@ export const useStore = create<State & Actions>()(
           };
         }
 
-        // First run today — counts for streak
-        let streak = state.dailyStreak;
-        if (state.lastDailyDate === null) streak = 1;
-        else {
-          const diff = daysBetween(state.lastDailyDate, today);
-          streak = diff === 1 ? streak + 1 : 1;
-        }
+        // First run today — counts for the challenge streak AND the overall
+        // training streak (finishing the daily is a training day too).
+        const streak = advanceStreak(state.lastDailyDate, state.dailyStreak, today);
+        const playStreak = advanceStreak(state.lastPlayed, state.streak, today);
 
         const isBest = totalScore > state.bestDaily;
         const record: DailyResult = {
@@ -197,6 +197,8 @@ export const useStore = create<State & Actions>()(
           dailyStreak: streak,
           lastDailyDate: today,
           bestDaily: isBest ? totalScore : s.bestDaily,
+          streak: playStreak,
+          lastPlayed: today,
         }));
         return { isBest, streak, isPractice: false };
       },
