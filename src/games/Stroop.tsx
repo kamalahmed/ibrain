@@ -7,6 +7,7 @@ import { ResultsScreen } from "@/components/ResultsScreen";
 import { Tutorial, type TutorialStep } from "@/components/Tutorial";
 import { LevelProgress } from "@/components/LevelProgress";
 import { LevelComplete } from "@/components/LevelComplete";
+import { GameHUD } from "@/components/GameHUD";
 import { getGame } from "@/lib/games";
 import { haptic } from "@/lib/haptics";
 import { useStore } from "@/store/useStore";
@@ -484,7 +485,7 @@ export default function Stroop() {
       : null;
 
   return (
-    <GameShell game={game}>
+    <GameShell game={game} compact={phase === "playing" || phase === "levelDone"}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
           Four Stroop levels in one 3-minute session. Levels 1–2 build the
@@ -502,30 +503,14 @@ export default function Stroop() {
 
       {(phase === "playing" || phase === "levelDone") && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <LevelProgress
-              total={LEVELS.length}
-              current={levelIdx + 1}
-              cleared={clearedRef.current}
-              label="Level"
-            />
-            <div className="flex items-center gap-2">
-              <span className="chip" data-testid="score">
-                {score} pts
-              </span>
-              <span
-                className={
-                  "chip " +
-                  (timeLeft <= 15
-                    ? "bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-800"
-                    : "")
-                }
-                data-testid="timer"
-              >
-                {formatTime(timeLeft)}
-              </span>
-            </div>
-          </div>
+          <GameHUD
+            levelTotal={LEVELS.length}
+            levelCurrent={levelIdx + 1}
+            levelsCleared={clearedRef.current}
+            score={score}
+            timeLeft={timeLeft}
+            sessionSeconds={SESSION_SECONDS}
+          />
 
           <div
             className="rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 px-4 py-2 text-center text-white shadow-soft"
@@ -739,8 +724,3 @@ function ColorButton({
   );
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
