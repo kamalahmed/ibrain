@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { GameShell } from "@/components/GameShell";
 import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
@@ -23,6 +23,7 @@ const BOUNDS = { w: 100, h: 100 };
 const BUCKET_REFILL_MS = 2000;
 const PING_LIFE_MS = 850;
 const GRAIN_LIFE_MS = 460;
+const RIPPLE_LIFE_MS = 650;
 const SESSION_SECONDS = 180; // 3-minute session
 const LEVEL_CLEAR_BONUS = 50;
 
@@ -91,6 +92,16 @@ type Grain = {
   fromY: number;
   toX: number;
   toY: number;
+  born: number;
+};
+
+/** A brief expanding ring on the water — a splash under a tapped fish, or a
+ *  plain ripple where a tap hit only water (a miss). Purely visual. */
+type Ripple = {
+  id: number;
+  x: number;
+  y: number;
+  kind: "splash" | "miss";
   born: number;
 };
 
@@ -232,6 +243,7 @@ export default function AttentionPond() {
   const [isBest, setIsBest] = useState(false);
   const [pings, setPings] = useState<Ping[]>([]);
   const [grains, setGrains] = useState<Grain[]>([]);
+  const [ripples, setRipples] = useState<Ripple[]>([]);
   const [bucketReady, setBucketReady] = useState(true);
   const [bucketProgress, setBucketProgress] = useState(1); // 0 refilling → 1 full
   const [bucketShake, setBucketShake] = useState(0);
@@ -248,6 +260,9 @@ export default function AttentionPond() {
   const pingIdRef = useRef(0);
   const grainsRef = useRef<Grain[]>([]);
   const grainIdRef = useRef(0);
+  const ripplesRef = useRef<Ripple[]>([]);
+  const rippleIdRef = useRef(0);
+  const levelTimerRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
   const levelStartedAtRef = useRef(0); // performance.now() at level start
@@ -316,9 +331,9 @@ export default function AttentionPond() {
       const nextIdx = levelIdx + 1;
       setPhase("levelDone");
       if (nextIdx >= LEVELS.length) {
-        window.setTimeout(() => finishGame(true), 1100);
+        levelTimerRef.current = window.setTimeout(() => finishGame(true), 1100);
       } else {
-        window.setTimeout(() => startLevel(nextIdx), 1100);
+        levelTimerRef.current = window.setTimeout(() => startLevel(nextIdx), 1100);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,6 +359,8 @@ export default function AttentionPond() {
     setPings([]);
     grainsRef.current = [];
     setGrains([]);
+    ripplesRef.current = [];
+    setRipples([]);
     setLevelIdx(idx);
     setPhase("playing");
   }, []);
@@ -422,6 +439,15 @@ export default function AttentionPond() {
         setGrains(grainsLeft);
       }
 
+      // --- ripple cleanup ---
+      const ripplesLeft = ripplesRef.current.filter(
+        (r) => now - r.born < RIPPLE_LIFE_MS
+      );
+      if (ripplesLeft.length !== ripplesRef.current.length) {
+        ripplesRef.current = ripplesLeft;
+        setRipples(ripplesLeft);
+      }
+
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -455,6 +481,24 @@ export default function AttentionPond() {
     setGrains(grainsRef.current);
   };
 
+  const addRipple = (x: number, y: number, kind: Ripple["kind"]) => {
+    const ripple: Ripple = {
+      id: ++rippleIdRef.current,
+      x,
+      y,
+      kind,
+      born: performance.now(),
+    };
+    ripplesRef.current = [...ripplesRef.current, ripple];
+    setRipples(ripplesRef.current);
+  };
+
+  /** A tap that hit only water — no penalty, just an honest ripple. */
+  const tapWater = (x: number, y: number) => {
+    if (phase !== "playing") return;
+    addRipple(x, y, "miss");
+  };
+
   const tapFish = (id: number, e: React.PointerEvent) => {
     e.stopPropagation();
     if (phase !== "playing") return;
@@ -480,6 +524,7 @@ export default function AttentionPond() {
       levelPointsRef.current -= 50;
       setScore(scoreRef.current);
       addPing(hit.x, hit.y, "-50", "bad");
+      addRipple(hit.x, hit.y, "splash");
       return;
     }
 
@@ -489,6 +534,7 @@ export default function AttentionPond() {
     setScore(scoreRef.current);
     addPing(hit.x, hit.y, "+100", "ok");
     addGrain(hit.x, hit.y);
+    addRipple(hit.x, hit.y, "splash");
 
     const next = fishRef.current.map((f) =>
       f.id === id ? { ...f, fed: true } : f
@@ -532,7 +578,13 @@ export default function AttentionPond() {
     startLevel(0);
   };
 
-  useEffect(() => () => stopSessionTick(), []);
+  useEffect(() => {
+    return () => {
+      stopSessionTick();
+      if (levelTimerRef.current !== null)
+        window.clearTimeout(levelTimerRef.current);
+    };
+  }, []);
 
   const tutorialSteps: TutorialStep[] = [
     {
@@ -607,8 +659,10 @@ export default function AttentionPond() {
                 reeds={reeds}
                 pings={pings}
                 grains={grains}
+                ripples={ripples}
                 levelIdx={levelIdx}
                 onTapFish={tapFish}
+                onTapWater={tapWater}
                 showOverlay={false}
               />
               <Bucket
@@ -686,6 +740,10 @@ function PondDefs({ idPrefix }: { idPrefix: string }) {
         <stop offset="0%" stopColor="#1f7a52" />
         <stop offset="100%" stopColor="#76d39a" />
       </linearGradient>
+      <linearGradient id={`${idPrefix}Sand`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#ead29c" />
+        <stop offset="100%" stopColor="#c6a165" />
+      </linearGradient>
       <linearGradient id={`${idPrefix}Grass`} x1="0" y1="1" x2="0" y2="0">
         <stop offset="0%" stopColor="#0a5e44" />
         <stop offset="100%" stopColor="#1f9c70" />
@@ -720,8 +778,10 @@ function Pond({
   reeds,
   pings,
   grains,
+  ripples,
   levelIdx,
   onTapFish,
+  onTapWater,
   showOverlay,
 }: {
   fish: Fish[];
@@ -729,15 +789,27 @@ function Pond({
   reeds: Reed[];
   pings: Ping[];
   grains: Grain[];
+  ripples: Ripple[];
   levelIdx: number;
   onTapFish: (id: number, e: React.PointerEvent) => void;
+  onTapWater: (x: number, y: number) => void;
   showOverlay: boolean;
 }) {
   const fishLevel = clampLevel(levelIdx);
+  // Taps on fish stopPropagation, so anything landing here hit open water.
+  const handleWaterTap = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    onTapWater(
+      ((e.clientX - rect.left) / rect.width) * 100,
+      ((e.clientY - rect.top) / rect.height) * 100
+    );
+  };
   return (
     <div
       className="relative mx-auto aspect-square w-full max-w-xl overflow-hidden rounded-3xl ring-1 ring-emerald-900/30 shadow-soft dark:ring-emerald-950"
       style={{ background: "#0a5644" }}
+      onPointerDown={handleWaterTap}
     >
       <svg
         viewBox="0 0 100 100"
@@ -752,6 +824,9 @@ function Pond({
 
         {/* drifting light caustics */}
         <WaterCaustics idPrefix="pond" />
+
+        {/* slow-drifting surface ripple rings */}
+        <SurfaceRipples />
 
         {/* gentle surface current lines */}
         <g opacity="0.16" stroke="#eafff8" strokeWidth="0.25" fill="none">
@@ -783,10 +858,23 @@ function Pond({
           ))}
         </g>
 
+        {/* shore rim — sand and grass soften the pond's edge */}
+        <ShoreRim idPrefix="pond" />
+
         {/* reed clumps — shore cover the fish hide behind */}
         <g pointerEvents="none">
           {reeds.map((r) => (
             <ReedClump key={r.id} reed={r} idPrefix="pond" />
+          ))}
+        </g>
+
+        {/* a dragonfly flits across now and then (decoration only) */}
+        <Dragonfly />
+
+        {/* tap splashes and miss ripples on the water surface */}
+        <g pointerEvents="none">
+          {ripples.map((r) => (
+            <RippleGlyph key={r.id} ripple={r} />
           ))}
         </g>
 
@@ -855,6 +943,121 @@ function WaterCaustics({ idPrefix }: { idPrefix: string }) {
         />
       ))}
     </g>
+  );
+}
+
+/* ---------------- Surface ripple rings (idle water texture) ---------------- */
+
+function SurfaceRipples() {
+  // Faint elliptical rings that drift slowly across the surface, so the water
+  // reads as liquid even when nothing is happening. Decorative only.
+  const rings = [
+    { cx: 24, cy: 38, rx: 11, ry: 3.4, dur: 12, dx: 7, dy: 3 },
+    { cx: 68, cy: 22, rx: 14, ry: 4.2, dur: 16, dx: -8, dy: 4 },
+    { cx: 50, cy: 70, rx: 9, ry: 2.8, dur: 14, dx: 6, dy: -4 },
+  ];
+  return (
+    <g pointerEvents="none" fill="none" stroke="#eafff8">
+      {rings.map((r, i) => (
+        <motion.ellipse
+          key={i}
+          cx={r.cx}
+          cy={r.cy}
+          rx={r.rx}
+          ry={r.ry}
+          strokeWidth="0.35"
+          animate={{ x: [0, r.dx, 0], y: [0, r.dy, 0], opacity: [0.08, 0.22, 0.08] }}
+          transition={{ duration: r.dur, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
+    </g>
+  );
+}
+
+/* ---------------- Shore rim (sand + grass edge) ---------------- */
+
+function ShoreRim({ idPrefix }: { idPrefix: string }) {
+  // A sandy bank hugging the rounded edge, a mossy grass fringe on top of it,
+  // and a pale waterline where the pond meets the shore. Each entry is a
+  // stroked, inset rounded rect: [inset, rx, stroke, width, opacity, dash?].
+  const rings: [number, number, string, number, number, string?][] = [
+    [0, 10, `url(#${idPrefix}Sand)`, 6.5, 1],
+    [0.6, 9.5, "#2f9e63", 2.4, 0.55, "2.2 3.6"],
+    [3.1, 7.8, "#06342a", 0.9, 0.35],
+    [3.9, 7.4, "#eafff8", 0.4, 0.35],
+  ];
+  return (
+    <g pointerEvents="none" fill="none" strokeLinecap="round">
+      {rings.map(([inset, rx, stroke, w, opacity, dash], i) => (
+        <rect
+          key={i}
+          x={inset}
+          y={inset}
+          width={100 - inset * 2}
+          height={100 - inset * 2}
+          rx={rx}
+          stroke={stroke}
+          strokeWidth={w}
+          strokeDasharray={dash}
+          opacity={opacity}
+        />
+      ))}
+    </g>
+  );
+}
+
+/* ---------------- Tap ripple (splash / miss feedback) ---------------- */
+
+function RippleGlyph({ ripple }: { ripple: Ripple }) {
+  const t = Math.min(1, (performance.now() - ripple.born) / RIPPLE_LIFE_MS);
+  const splash = ripple.kind === "splash";
+  const r = 1.2 + t * (splash ? 5.5 : 9);
+  const opacity = (splash ? 0.85 : 0.6) * (1 - t);
+  const ring = (rr: number, w: number, o: number) => (
+    <circle cx={ripple.x} cy={ripple.y} r={rr} fill="none" stroke="#eafff8" strokeWidth={w} opacity={o} />
+  );
+  return (
+    <g pointerEvents="none">
+      {ring(r, splash ? 0.8 : 0.55, opacity)}
+      {ring(r * 0.55, 0.35, opacity * 0.7)}
+    </g>
+  );
+}
+
+/* ---------------- Dragonfly (ambient decoration) ---------------- */
+
+function Dragonfly() {
+  const reduced = useReducedMotion();
+  if (reduced) return null;
+  return (
+    <motion.g
+      pointerEvents="none"
+      opacity="0.9"
+      initial={{ x: -12, y: 32 }}
+      animate={{ x: [-12, 26, 62, 114], y: [32, 20, 38, 24] }}
+      transition={{
+        duration: 7,
+        times: [0, 0.35, 0.68, 1],
+        repeat: Infinity,
+        repeatDelay: 9,
+        delay: 4,
+        ease: "easeInOut",
+      }}
+    >
+      {/* wings — quick flutter */}
+      <motion.g
+        animate={{ scaleY: [1, 0.55, 1] }}
+        transition={{ duration: 0.22, repeat: Infinity, ease: "easeInOut" }}
+        style={pivot("50% 50%")}
+      >
+        <ellipse cx="-1.1" cy="-1.6" rx="2.6" ry="0.85" fill="#dff6ff" opacity="0.75" transform="rotate(-24)" />
+        <ellipse cx="-1.1" cy="1.6" rx="2.6" ry="0.85" fill="#dff6ff" opacity="0.75" transform="rotate(24)" />
+      </motion.g>
+      {/* body — slender, pointing right */}
+      <ellipse cx="-1.6" cy="0" rx="2.4" ry="0.42" fill="#3aa7c9" />
+      <circle cx="1.1" cy="0" r="0.75" fill="#1d7d9e" />
+      <circle cx="1.5" cy="-0.35" r="0.3" fill="#0f172a" />
+    </motion.g>
   );
 }
 
@@ -1498,6 +1701,7 @@ function DemoPond({
           <rect width="100" height="100" fill="url(#demoWater)" />
           <rect width="100" height="100" fill="url(#demoDepth)" />
           <WaterCaustics idPrefix="demo" />
+          <SurfaceRipples />
           <UnderwaterGrass idPrefix="demo" />
           <g>
             {fish.map((f) => (
@@ -1509,6 +1713,7 @@ function DemoPond({
               <LilyPadShape key={p.id} pad={p} idPrefix="demo" />
             ))}
           </g>
+          <ShoreRim idPrefix="demo" />
           <g pointerEvents="none">
             {demoReeds.map((r) => (
               <ReedClump key={r.id} reed={r} idPrefix="demo" />
