@@ -36,6 +36,18 @@ export function normalizeScore(id: GameId, raw: number): number {
       // 3000 pts ≈ strong run → 100
       return clamp((raw / 3000) * 100);
     }
+    case "pattern": {
+      // 900 pts ≈ strong run → 100
+      return clamp((raw / 900) * 100);
+    }
+    case "flock": {
+      // 1600 pts ≈ strong run → 100
+      return clamp((raw / 1600) * 100);
+    }
+    case "compare": {
+      // 1200 pts ≈ strong run → 100
+      return clamp((raw / 1200) * 100);
+    }
   }
 }
 
@@ -53,6 +65,9 @@ export function formatScore(id: GameId, raw: number): string {
     case "math":
     case "pond":
     case "stroop":
+    case "pattern":
+    case "flock":
+    case "compare":
       return `${Math.round(raw)} pts`;
   }
 }

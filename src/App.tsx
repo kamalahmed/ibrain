@@ -14,6 +14,9 @@ import MathSprint from "./games/MathSprint";
 import SchulteTable from "./games/SchulteTable";
 import AttentionPond from "./games/AttentionPond";
 import Stroop from "./games/Stroop";
+import PatternRecall from "./games/PatternRecall";
+import FlockFocus from "./games/FlockFocus";
+import QuickCompare from "./games/QuickCompare";
 import { useStore } from "./store/useStore";
 
 type FramerReducedMotion = "always" | "never" | "user";
@@ -49,6 +52,9 @@ function AnimatedRoutes() {
           <Route path="/play/schulte" element={<SchulteTable />} />
           <Route path="/play/pond" element={<AttentionPond />} />
           <Route path="/play/stroop" element={<Stroop />} />
+          <Route path="/play/pattern" element={<PatternRecall />} />
+          <Route path="/play/flock" element={<FlockFocus />} />
+          <Route path="/play/compare" element={<QuickCompare />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </motion.div>

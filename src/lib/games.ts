@@ -5,7 +5,10 @@ export type GameId =
   | "math"
   | "schulte"
   | "pond"
-  | "stroop";
+  | "stroop"
+  | "pattern"
+  | "flock"
+  | "compare";
 
 /** Broad cognitive areas each game trains — the way Lumosity-style trainers
  *  group their exercises so progress is legible, not just a pile of scores. */
@@ -187,6 +190,51 @@ export const GAMES: GameMeta[] = [
     domain: "flexibility",
     trains:
       "Response inhibition and cognitive control — the Stroop effect (Stroop, 1935) measures how well you override an automatic response to follow the rule that actually matters.",
+  },
+  {
+    id: "pattern",
+    name: "Pattern Recall",
+    tagline: "Fireflies light a pattern. Tap it back from memory.",
+    description:
+      "A night-garden take on the classic memory matrix. Fireflies briefly light up stones on a grid — then fade. Tap the stones that were lit. Four levels: the grid grows and the patterns get longer, from 3 easy tiles to expert constellations.",
+    path: "/play/pattern",
+    emoji: "✨",
+    accent: "from-indigo-500 to-violet-600",
+    scoreUnit: "pts",
+    lowerIsBetter: false,
+    domain: "memory",
+    trains:
+      "Visuospatial short-term memory — encoding a spatial pattern in one glance and holding it just long enough to reproduce it. The classic span task behind memory-matrix style trainers.",
+  },
+  {
+    id: "flock",
+    name: "Flock Focus",
+    tagline: "Which way does the middle bird fly? Ignore the flock.",
+    description:
+      "A flanker task in the open sky. A small flock flies past — answer the direction the CENTRE bird is facing, left or right. Easy at first, but soon the flanking birds turn against you and the flock speeds up. Streaks build a combo.",
+    path: "/play/flock",
+    emoji: "🕊️",
+    accent: "from-sky-400 to-indigo-500",
+    scoreUnit: "pts",
+    lowerIsBetter: false,
+    domain: "attention",
+    trains:
+      "Selective attention and interference control — the Eriksen flanker paradigm measures how well you focus on a target while suppressing conflicting information right next to it.",
+  },
+  {
+    id: "compare",
+    name: "Quick Compare",
+    tagline: "Which side weighs more? Tip the scales, fast.",
+    description:
+      "Two crates of numbers sit on a market scale. Tap the heavier side — or the beam when they're equal. Starts with single digits and ramps to quick arithmetic like 3+9 vs 14. Fast correct answers score more.",
+    path: "/play/compare",
+    emoji: "⚖️",
+    accent: "from-amber-400 to-orange-600",
+    scoreUnit: "pts",
+    lowerIsBetter: false,
+    domain: "problem",
+    trains:
+      "Numerical estimation and rapid decision-making — comparing magnitudes at a glance instead of computing exactly, a core piece of everyday number sense.",
   },
 ];
 
