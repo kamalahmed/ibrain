@@ -29,11 +29,12 @@ test("computeDomainScores reports zero/untrained for an empty profile", () => {
 });
 
 test("computeDomainScores averages the normalized bests within a domain", () => {
-  // memory domain = Memory Match (anchor 900) + N-Back (anchor 550).
+  // memory domain = Memory Match (anchor 900) + N-Back (anchor 550) +
+  // Pattern Recall (anchor 900, unplayed here).
   const ds = computeDomainScores({ memory: 900, nback: 550 });
   assert.equal(ds.memory.score, 100);
   assert.equal(ds.memory.played, 2);
-  assert.equal(ds.memory.total, 2);
+  assert.equal(ds.memory.total, 3);
 });
 
 test("computeDomainScores totals add up to the full game roster", () => {
