@@ -29,6 +29,9 @@ export function GameArt({ id, animated = false, className }: Props) {
       {id === "schulte" && <SchulteArt animated={animated} />}
       {id === "pond" && <PondArt animated={animated} />}
       {id === "stroop" && <StroopArt animated={animated} />}
+      {id === "pattern" && <PatternArt animated={animated} />}
+      {id === "flock" && <FlockArt animated={animated} />}
+      {id === "compare" && <CompareArt animated={animated} />}
     </svg>
   );
 }
@@ -335,6 +338,123 @@ function PondArt({ animated }: ArtProps) {
       {fish(76, 58)}
       {fish(132, 52, true, 0.6)}
       {fish(96, 88, false, 1.1)}
+    </g>
+  );
+}
+
+/** Night-garden grid with a glowing firefly pattern to memorise. */
+function PatternArt({ animated }: ArtProps) {
+  const lit = new Set([1, 5, 6, 10]);
+  const cell = 24;
+  const x0 = 52;
+  const y0 = 14;
+  return (
+    <g>
+      {Array.from({ length: 12 }, (_, i) => {
+        const r = Math.floor(i / 4);
+        const c = i % 4;
+        const on = lit.has(i);
+        return (
+          <rect
+            key={i}
+            x={x0 + c * cell}
+            y={y0 + r * cell}
+            width={cell - 4}
+            height={cell - 4}
+            rx="6"
+            fill={on ? "#fde047" : "rgba(255,255,255,0.18)"}
+            stroke={on ? "#fef9c3" : "rgba(255,255,255,0.55)"}
+            strokeWidth="1.5"
+            opacity={on ? 0.95 : 1}
+          />
+        );
+      })}
+      <motion.circle
+        cx={x0 + cell + 10}
+        cy={y0 + cell + 10}
+        r="4"
+        fill="#fef08a"
+        {...(animated
+          ? {
+              animate: { opacity: [1, 0.4, 1], scale: [1, 1.35, 1] },
+              transition: { duration: 1.6, repeat: Infinity, ease: "easeInOut" },
+            }
+          : {})}
+      />
+      <circle cx="30" cy="28" r="2.4" fill="#fef08a" opacity="0.9" />
+      <circle cx="170" cy="44" r="2" fill="#fef08a" opacity="0.7" />
+      <circle cx="24" cy="88" r="1.8" fill="#fef08a" opacity="0.6" />
+    </g>
+  );
+}
+
+/** Flanker flock — answer the direction of the centre bird. */
+function FlockArt({ animated }: ArtProps) {
+  const bird = (x: number, y: number, flip: boolean, hot = false) => (
+    <g
+      key={`${x}-${y}`}
+      transform={`translate(${x} ${y})${flip ? " scale(-1,1)" : ""}`}
+    >
+      <path
+        d="M-10 2 Q-2 -7 10 -1 Q4 1 2 5 Q-4 7 -10 2 Z"
+        fill={hot ? "white" : "rgba(255,255,255,0.55)"}
+        stroke={hot ? "#4338ca" : "rgba(255,255,255,0.8)"}
+        strokeWidth={hot ? 2 : 1.2}
+      />
+      <path d="M-2 -1 L-9 -8 L-3 -3 Z" fill={hot ? "white" : "rgba(255,255,255,0.55)"} />
+      <circle cx="6.5" cy="-1.5" r="1.2" fill="#1e293b" />
+    </g>
+  );
+  return (
+    <g>
+      <circle cx="34" cy="24" r="10" fill="rgba(255,255,255,0.25)" />
+      <circle cx="48" cy="28" r="13" fill="rgba(255,255,255,0.2)" />
+      <circle cx="164" cy="86" r="12" fill="rgba(255,255,255,0.2)" />
+      {bird(58, 46, true)}
+      {bird(86, 38, true)}
+      <motion.g {...float(animated, 4, 2.2)}>
+        {bird(114, 46, false, true)}
+        <circle cx="114" cy="44" r="17" stroke="#fde047" strokeWidth="2.5" fill="none" />
+      </motion.g>
+      {bird(142, 38, true)}
+      <rect x="52" y="84" width="42" height="20" rx="10" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />
+      <text x="73" y="98" textAnchor="middle" fontSize="12" fontWeight="800" fill="white">←</text>
+      <rect x="106" y="84" width="42" height="20" rx="10" fill="white" opacity="0.95" />
+      <text x="127" y="98" textAnchor="middle" fontSize="12" fontWeight="800" fill="#4338ca">→</text>
+    </g>
+  );
+}
+
+/** Balance scale weighing two number crates. */
+function CompareArt({ animated }: ArtProps) {
+  return (
+    <g>
+      <motion.g
+        {...(animated
+          ? {
+              animate: { rotate: [-4, 3, -4] },
+              transition: { duration: 3, repeat: Infinity, ease: "easeInOut" as const },
+            }
+          : {})}
+        style={{ originX: "100px", originY: "38px" } as never}
+      >
+        <rect x="34" y="34" width="132" height="7" rx="3.5" fill="rgba(255,255,255,0.9)" />
+        {/* left pan */}
+        <path d="M40 41 L28 62 L64 62 L52 41" stroke="rgba(255,255,255,0.8)" strokeWidth="2" fill="none" />
+        <rect x="26" y="60" width="40" height="26" rx="6" fill="white" opacity="0.95" />
+        <text x="46" y="79" textAnchor="middle" fontSize="15" fontWeight="900" fill="#c2410c">
+          3+9
+        </text>
+        {/* right pan */}
+        <path d="M148 41 L136 62 L172 62 L160 41" stroke="rgba(255,255,255,0.8)" strokeWidth="2" fill="none" />
+        <rect x="134" y="60" width="40" height="26" rx="6" fill="white" opacity="0.95" />
+        <text x="154" y="79" textAnchor="middle" fontSize="15" fontWeight="900" fill="#c2410c">
+          14
+        </text>
+      </motion.g>
+      <path d="M96 38 L104 38 L102 96 L98 96 Z" fill="rgba(255,255,255,0.85)" />
+      <path d="M80 100 Q100 88 120 100 Z" fill="rgba(255,255,255,0.85)" />
+      <circle cx="100" cy="38" r="5" fill="#fde047" stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
     </g>
   );
 }

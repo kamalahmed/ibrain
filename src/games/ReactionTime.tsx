@@ -5,7 +5,6 @@ import { Instructions } from "@/components/Instructions";
 import { Countdown } from "@/components/Countdown";
 import { ResultsScreen } from "@/components/ResultsScreen";
 import { Tutorial, type TutorialStep } from "@/components/Tutorial";
-import { LevelProgress } from "@/components/LevelProgress";
 import { LevelComplete } from "@/components/LevelComplete";
 import { GameHUD } from "@/components/GameHUD";
 import { getGame } from "@/lib/games";
@@ -26,16 +25,26 @@ type Size = "small" | "big";
 type Stimulus = { shape: Shape; color: Color; size: Size };
 
 /** A rule constrains 1–3 attributes. The more it pins down, the harder the
- *  visual search ("any circle" vs "the big red triangle"). */
+ *  visual search ("any red balloon" vs "the big red triangle balloon"). */
 type RuleSpec = {
   shape?: Shape;
   color?: Color;
   size?: Size;
 };
 
+/** One drifting balloon: its stimulus plus where it flies in the scene. */
+type BalloonSpec = {
+  stimulus: Stimulus;
+  x: number; // lane centre (scene units)
+  spawnY: number; // body-centre y at launch
+  driftTo: number; // body-centre y when the window expires
+  bobDur: number; // idle bob duration (s)
+  bobDelay: number;
+};
+
 type Trial = {
-  options: [Stimulus, Stimulus, Stimulus];
-  /** -1 when this trial has no target (player must hold); else 0 | 1 | 2. */
+  balloons: [BalloonSpec, BalloonSpec, BalloonSpec];
+  /** -1 when no balloon matches (player must tap the cloud); else 0|1|2. */
   targetIdx: -1 | 0 | 1 | 2;
   windowMs: number;
 };
@@ -48,82 +57,98 @@ type TrialResult = {
   mult: number;
 };
 
+type Ping = {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  tone: "ok" | "bad" | "warn";
+};
+
+type Burst = {
+  id: number;
+  x: number;
+  y: number;
+  color: Color;
+  s: number;
+};
+
 type Level = {
   id: 1 | 2 | 3 | 4;
   name: string;
-  /** Rule complexity: how many attributes a generated rule pins down. */
-  minAttrs: number;
-  maxAttrs: number;
-  /** A rule stays active for a random count in this range, then switches. */
-  switchEvery: [number, number];
+  /** Attribute combinations a rule may pin at this level. */
+  rulePools: (keyof RuleSpec)[][];
+  /** Trials between rule switches — null = the rule never switches. */
+  switchEvery: [number, number] | null;
   trialCount: number;
   requiredCorrect: number;
   startWindowMs: number;
   endWindowMs: number;
-  /** Probability 0..1 that a given trial is a no-target "hold" trial. */
+  /** Probability 0..1 that a launch has no matching balloon. */
   noTargetPct: number;
 };
 
 const SESSION_SECONDS = 180; // 3-minute session
 const LEVEL_CLEAR_BONUS = 75;
 const INTER_STIMULUS_MS = 300;
-const RULE_FLASH_MS = 850; // pause to read a freshly switched rule
-const NOGO_CORRECT_BONUS = 40;
-const FALSE_ALARM_PENALTY = -8;
+const RULE_FLASH_MS = 900; // pause to read a freshly switched rule
+const NOGO_BASE = 8; // base points for a correct "none match"
+const WRONG_PENALTY = -10;
+const FEEDBACK_MS = 900;
+
+const SKY = { w: 100, h: 80 };
+const LANES = [22, 50, 78] as const;
+const BIG_S = 8.2;
+const SMALL_S = 5.6;
 
 const SHAPES: readonly Shape[] = ["circle", "square", "triangle"];
 const COLORS: readonly Color[] = ["green", "red", "yellow", "blue"];
 const SIZES: readonly Size[] = ["small", "big"];
-const ATTR_KEYS = ["shape", "color", "size"] as const;
 
 const LEVELS: Level[] = [
   {
     id: 1,
-    name: "Single feature",
-    minAttrs: 1,
-    maxAttrs: 1,
-    switchEvery: [5, 7],
-    trialCount: 18,
-    requiredCorrect: 13,
-    startWindowMs: 2400,
-    endWindowMs: 1900,
+    name: "One colour",
+    rulePools: [["color"]],
+    switchEvery: null, // the rule is fixed — pure warm-up
+    trialCount: 10,
+    requiredCorrect: 6,
+    startWindowMs: 3400,
+    endWindowMs: 2800,
     noTargetPct: 0,
   },
   {
     id: 2,
-    name: "Shifting rules",
-    minAttrs: 1,
-    maxAttrs: 2,
-    switchEvery: [3, 5],
-    trialCount: 22,
-    requiredCorrect: 16,
-    startWindowMs: 2100,
-    endWindowMs: 1600,
-    noTargetPct: 0.1,
+    name: "Rule starts switching",
+    rulePools: [["color"], ["shape"]],
+    switchEvery: [4, 6],
+    trialCount: 14,
+    requiredCorrect: 9,
+    startWindowMs: 3000,
+    endWindowMs: 2400,
+    noTargetPct: 0.12,
   },
   {
     id: 3,
-    name: "Feature pairs",
-    minAttrs: 2,
-    maxAttrs: 2,
+    name: "Two features",
+    rulePools: [["color", "shape"]],
     switchEvery: [3, 4],
-    trialCount: 24,
-    requiredCorrect: 17,
-    startWindowMs: 1900,
-    endWindowMs: 1400,
+    trialCount: 16,
+    requiredCorrect: 10,
+    startWindowMs: 2700,
+    endWindowMs: 2100,
     noTargetPct: 0.18,
   },
   {
     id: 4,
-    name: "Full conjunction",
-    minAttrs: 2,
-    maxAttrs: 3,
+    name: "Full conjunction, faster",
+    rulePools: [["color", "shape", "size"]],
     switchEvery: [2, 4],
-    trialCount: 28,
-    requiredCorrect: 18,
-    startWindowMs: 1700,
-    endWindowMs: 1200,
-    noTargetPct: 0.25,
+    trialCount: 18,
+    requiredCorrect: 11,
+    startWindowMs: 2300,
+    endWindowMs: 1700,
+    noTargetPct: 0.22,
   },
 ];
 
@@ -144,12 +169,10 @@ function comboMultiplier(combo: number): number {
 
 /* ---------------- Rules ---------------- */
 
-function makeRuleSpec(attrCount: number): RuleSpec {
-  const keys = [...ATTR_KEYS]
-    .sort(() => Math.random() - 0.5)
-    .slice(0, attrCount);
+function makeRuleSpec(lvl: Level): RuleSpec {
+  const pool = lvl.rulePools[randInt(0, lvl.rulePools.length - 1)];
   const spec: RuleSpec = {};
-  for (const k of keys) {
+  for (const k of pool) {
     if (k === "shape") spec.shape = SHAPES[randInt(0, SHAPES.length - 1)];
     else if (k === "color") spec.color = COLORS[randInt(0, COLORS.length - 1)];
     else spec.size = SIZES[randInt(0, SIZES.length - 1)];
@@ -163,9 +186,9 @@ function sameSpec(a: RuleSpec, b: RuleSpec): boolean {
 
 /** A rule that differs from the previous one, so a switch is always visible. */
 function nextRuleSpec(level: Level, prev: RuleSpec | null): RuleSpec {
-  let spec = makeRuleSpec(randInt(level.minAttrs, level.maxAttrs));
+  let spec = makeRuleSpec(level);
   for (let i = 0; i < 25 && prev && sameSpec(spec, prev); i += 1) {
-    spec = makeRuleSpec(randInt(level.minAttrs, level.maxAttrs));
+    spec = makeRuleSpec(level);
   }
   return spec;
 }
@@ -175,10 +198,8 @@ function ruleLabel(spec: RuleSpec): string {
   if (spec.size) parts.push(spec.size === "big" ? "BIG" : "SMALL");
   if (spec.color) parts.push(spec.color.toUpperCase());
   if (spec.shape) parts.push(spec.shape.toUpperCase());
-  if (parts.length === 0) return "Tap a shape";
-  return parts.length === 1
-    ? `Tap any ${parts[0]}`
-    : `Tap the ${parts.join(" ")}`;
+  if (parts.length === 0) return "any balloon";
+  return parts.length === 1 ? `any ${parts[0]}` : `the ${parts.join(" ")}`;
 }
 
 /* ---------------- Trial generator ---------------- */
@@ -192,11 +213,13 @@ function sampleMatching(spec: RuleSpec): Stimulus {
 }
 
 /** A near-miss distractor: matches the rule on all but one pinned attribute,
- *  so distractors look almost right and the search is real. */
+ *  so distractor balloons look almost right and the search is real. */
 function sampleNonMatching(spec: RuleSpec): Stimulus {
-  const pinned = ATTR_KEYS.filter((k) => spec[k] !== undefined);
+  const pinned = (["shape", "color", "size"] as const).filter(
+    (k) => spec[k] !== undefined
+  );
   const s = sampleMatching(spec);
-  if (pinned.length === 0) return s; // rule pins nothing — shouldn't happen
+  if (pinned.length === 0) return s;
   const flip = pinned[randInt(0, pinned.length - 1)];
   if (flip === "shape") s.shape = pickOther(SHAPES, s.shape);
   else if (flip === "color") s.color = pickOther(COLORS, s.color);
@@ -215,21 +238,30 @@ function windowForTrial(lvl: Level, trialIdx: number): number {
 function buildTrial(lvl: Level, trialIdx: number, spec: RuleSpec): Trial {
   const windowMs = windowForTrial(lvl, trialIdx);
   const hasTarget = Math.random() >= lvl.noTargetPct;
-  const options: [Stimulus, Stimulus, Stimulus] = [
+  const stimuli: [Stimulus, Stimulus, Stimulus] = [
     sampleNonMatching(spec),
     sampleNonMatching(spec),
     sampleNonMatching(spec),
   ];
-  if (!hasTarget) {
-    return { options, targetIdx: -1, windowMs };
+  let targetIdx: -1 | 0 | 1 | 2 = -1;
+  if (hasTarget) {
+    targetIdx = randInt(0, 2) as 0 | 1 | 2;
+    stimuli[targetIdx] = sampleMatching(spec);
   }
-  const targetIdx = randInt(0, 2) as 0 | 1 | 2;
-  options[targetIdx] = sampleMatching(spec);
-  return { options, targetIdx, windowMs };
+  const balloons = stimuli.map((stimulus, i) => ({
+    stimulus,
+    x: LANES[i] + (Math.random() * 8 - 4),
+    spawnY: 62 + Math.random() * 6,
+    driftTo: 6 + Math.random() * 4,
+    bobDur: 2.1 + Math.random() * 1.1,
+    bobDelay: Math.random() * 0.7,
+  })) as [BalloonSpec, BalloonSpec, BalloonSpec];
+  return { balloons, targetIdx, windowMs };
 }
 
+/** Speed-scaled base points for a pop; the combo multiplier stacks on top. */
 function scoreForHit(ms: number): number {
-  return Math.max(20, Math.round((1200 - ms) / 4));
+  return Math.max(4, Math.round((1250 - ms) / 50));
 }
 
 /* ---------------- Component ---------------- */
@@ -258,6 +290,9 @@ export default function ReactionTime() {
   const [totalHits, setTotalHits] = useState(0);
   const [falseAlarms, setFalseAlarms] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
+  const [pings, setPings] = useState<Ping[]>([]);
+  const [bursts, setBursts] = useState<Burst[]>([]);
+  const [cloudPulse, setCloudPulse] = useState(0);
 
   const scoreRef = useRef(0);
   const comboRef = useRef(0);
@@ -274,12 +309,21 @@ export default function ReactionTime() {
   const sessionTickRef = useRef<number | null>(null);
   const responseTimerRef = useRef<number | null>(null);
   const interStimulusTimerRef = useRef<number | null>(null);
+  const transientTimersRef = useRef<number[]>([]);
   const startAtRef = useRef(0);
   const respondedRef = useRef(false);
   const endedRef = useRef(false);
   const trialRef = useRef<Trial | null>(null);
+  const pingIdRef = useRef(0);
+  const burstIdRef = useRef(0);
 
   const currentLevel = LEVELS[levelIdx];
+
+  /** Fire-and-forget timeout that is guaranteed to be cleared on unmount. */
+  const later = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    transientTimersRef.current.push(id);
+  };
 
   const clearTimers = () => {
     if (responseTimerRef.current !== null) {
@@ -302,6 +346,8 @@ export default function ReactionTime() {
     () => () => {
       clearTimers();
       stopSessionTick();
+      transientTimersRef.current.forEach((id) => window.clearTimeout(id));
+      transientTimersRef.current = [];
     },
     []
   );
@@ -330,6 +376,18 @@ export default function ReactionTime() {
     [recordPlay]
   );
 
+  const addPing = (x: number, y: number, text: string, tone: Ping["tone"]) => {
+    const id = ++pingIdRef.current;
+    setPings((ps) => [...ps, { id, x, y, text, tone }]);
+    later(() => setPings((ps) => ps.filter((p) => p.id !== id)), 950);
+  };
+
+  const addBurst = (x: number, y: number, color: Color, s: number) => {
+    const id = ++burstIdRef.current;
+    setBursts((bs) => [...bs, { id, x, y, color, s }]);
+    later(() => setBursts((bs) => bs.filter((b) => b.id !== id)), 750);
+  };
+
   /** Apply a trial outcome: update the combo streak, score, and feedback. */
   const evaluate = (kind: ResultKind, basePts: number, ms?: number) => {
     const correct = kind === "hit" || kind === "nogo-correct";
@@ -357,8 +415,12 @@ export default function ReactionTime() {
     }
     if (kind === "hit") setTotalHits((n) => n + 1);
     if (kind === "wrong") setFalseAlarms((n) => n + 1);
-    setLastResult({ kind, ms, pts, mult });
-    window.setTimeout(() => setLastResult(null), INTER_STIMULUS_MS);
+    const result: TrialResult = { kind, ms, pts, mult };
+    setLastResult(result);
+    later(() => {
+      setLastResult((cur) => (cur === result ? null : cur));
+    }, FEEDBACK_MS);
+    return pts;
   };
 
   const armNext = useCallback(() => {
@@ -374,12 +436,11 @@ export default function ReactionTime() {
         setLastCleared(lvl.id);
         setLastLevelScore(levelPointsRef.current);
         const nextIdx = levelIdxRef.current + 1;
+        setPhase("levelDone");
         if (nextIdx >= LEVELS.length) {
-          setPhase("levelDone");
-          window.setTimeout(() => end(true), 1100);
+          later(() => end(true), 1100);
         } else {
-          setPhase("levelDone");
-          window.setTimeout(() => startLevel(nextIdx), 1100);
+          later(() => startLevel(nextIdx), 1100);
         }
       } else {
         end(false);
@@ -389,7 +450,7 @@ export default function ReactionTime() {
 
     // Rule switch: the active rule changes mid-level so you can't autopilot.
     let switched = false;
-    if (trialsUntilSwitchRef.current <= 0) {
+    if (lvl.switchEvery !== null && trialsUntilSwitchRef.current <= 0) {
       const spec = nextRuleSpec(lvl, ruleRef.current);
       ruleRef.current = spec;
       setRule(spec);
@@ -399,6 +460,7 @@ export default function ReactionTime() {
         lvl.switchEvery[0],
         lvl.switchEvery[1]
       );
+      haptic.tap();
       switched = true;
     }
     trialsUntilSwitchRef.current -= 1;
@@ -415,10 +477,13 @@ export default function ReactionTime() {
         const current = trialRef.current;
         const isHoldTrial = current?.targetIdx === -1;
         if (isHoldTrial) {
+          // Waiting a clear sky out still counts — the cloud is just faster.
           haptic.tap();
-          evaluate("nogo-correct", NOGO_CORRECT_BONUS);
+          const pts = evaluate("nogo-correct", NOGO_BASE);
+          addPing(50, 30, `+${pts}`, "ok");
         } else {
           evaluate("miss", 0);
+          addPing(50, 16, "flew away", "warn");
         }
         trialIdxRef.current += 1;
         setTrialIdx(trialIdxRef.current);
@@ -431,7 +496,7 @@ export default function ReactionTime() {
       }, t.windowMs);
     };
 
-    // After a switch, hold the trial back briefly so the new rule can be read.
+    // After a switch, hold the launch back briefly so the new rule can be read.
     if (switched) {
       interStimulusTimerRef.current = window.setTimeout(
         buildAndShow,
@@ -445,6 +510,7 @@ export default function ReactionTime() {
 
   const startLevel = useCallback(
     (idx: number) => {
+      if (endedRef.current) return; // session ended during the levelDone pause
       const lvl = LEVELS[idx];
       setLevelIdx(idx);
       levelIdxRef.current = idx;
@@ -456,16 +522,18 @@ export default function ReactionTime() {
       setLastResult(null);
       trialRef.current = null;
       setTrial(null);
+      setPings([]);
+      setBursts([]);
       // first rule of the level
-      const spec = nextRuleSpec(lvl, null);
+      const spec = nextRuleSpec(lvl, ruleRef.current);
       ruleRef.current = spec;
       setRule(spec);
       ruleSwitchKeyRef.current += 1;
       setRuleSwitchKey(ruleSwitchKeyRef.current);
-      trialsUntilSwitchRef.current = randInt(
-        lvl.switchEvery[0],
-        lvl.switchEvery[1]
-      );
+      trialsUntilSwitchRef.current =
+        lvl.switchEvery === null
+          ? Number.POSITIVE_INFINITY
+          : randInt(lvl.switchEvery[0], lvl.switchEvery[1]);
       setPhase("playing");
       clearTimers();
       interStimulusTimerRef.current = window.setTimeout(armNext, RULE_FLASH_MS);
@@ -473,25 +541,16 @@ export default function ReactionTime() {
     [armNext]
   );
 
-  const handleTap = (idx: 0 | 1 | 2) => {
-    if (phase !== "playing" || respondedRef.current || endedRef.current) return;
-    const current = trialRef.current;
-    if (!current) return;
-    respondedRef.current = true;
-    if (responseTimerRef.current !== null) {
-      window.clearTimeout(responseTimerRef.current);
-      responseTimerRef.current = null;
-    }
-    const ms = performance.now() - startAtRef.current;
-    const isHoldTrial = current.targetIdx === -1;
-    const isHit = !isHoldTrial && idx === current.targetIdx;
-    if (isHit) {
-      haptic.success();
-      evaluate("hit", scoreForHit(ms), ms);
-    } else {
-      haptic.error();
-      evaluate("wrong", FALSE_ALARM_PENALTY);
-    }
+  /** Where a balloon's body sits right now (drift is linear over the window). */
+  const balloonPosNow = (b: BalloonSpec, windowMs: number) => {
+    const frac = Math.min(
+      1,
+      Math.max(0, (performance.now() - startAtRef.current) / windowMs)
+    );
+    return { x: b.x, y: b.spawnY + (b.driftTo - b.spawnY) * frac };
+  };
+
+  const finishTrial = () => {
     trialIdxRef.current += 1;
     setTrialIdx(trialIdxRef.current);
     trialRef.current = null;
@@ -500,6 +559,56 @@ export default function ReactionTime() {
       armNext,
       INTER_STIMULUS_MS
     );
+  };
+
+  const claimResponse = (): Trial | null => {
+    if (phase !== "playing" || respondedRef.current || endedRef.current)
+      return null;
+    const current = trialRef.current;
+    if (!current) return null;
+    respondedRef.current = true;
+    if (responseTimerRef.current !== null) {
+      window.clearTimeout(responseTimerRef.current);
+      responseTimerRef.current = null;
+    }
+    return current;
+  };
+
+  const handleTapBalloon = (idx: 0 | 1 | 2, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const current = claimResponse();
+    if (!current) return;
+    const ms = performance.now() - startAtRef.current;
+    const b = current.balloons[idx];
+    const pos = balloonPosNow(b, current.windowMs);
+    const isHit = current.targetIdx !== -1 && idx === current.targetIdx;
+    if (isHit) {
+      haptic.success();
+      const pts = evaluate("hit", scoreForHit(ms), ms);
+      addBurst(pos.x, pos.y, b.stimulus.color, b.stimulus.size === "big" ? BIG_S : SMALL_S);
+      addPing(pos.x, pos.y - 4, `+${pts}`, "ok");
+    } else {
+      haptic.error();
+      const pts = evaluate("wrong", WRONG_PENALTY);
+      addPing(pos.x, pos.y - 4, `${pts}`, "bad");
+    }
+    finishTrial();
+  };
+
+  const handleNoneMatch = () => {
+    const current = claimResponse();
+    if (!current) return;
+    if (current.targetIdx === -1) {
+      haptic.success();
+      setCloudPulse((n) => n + 1);
+      const pts = evaluate("nogo-correct", NOGO_BASE);
+      addPing(50, 66, `+${pts}`, "ok");
+    } else {
+      haptic.error();
+      const pts = evaluate("wrong", WRONG_PENALTY);
+      addPing(50, 66, `${pts}`, "bad");
+    }
+    finishTrial();
   };
 
   const startSession = () => {
@@ -513,7 +622,7 @@ export default function ReactionTime() {
       );
       setTimeLeft(left);
       if (left <= 0) end(false);
-    }, 250);
+    }, 200);
     startLevel(0);
   };
 
@@ -538,6 +647,8 @@ export default function ReactionTime() {
     setRule(null);
     trialRef.current = null;
     setTrial(null);
+    setPings([]);
+    setBursts([]);
     setTimeLeft(SESSION_SECONDS);
     endedRef.current = false;
     setPhase(tutorialSeen ? "countdown" : "tutorial");
@@ -552,112 +663,51 @@ export default function ReactionTime() {
 
   const tutorialSteps: TutorialStep[] = [
     {
-      caption:
-        "Three options appear side by side. Tap the one that matches the current rule — or if NONE match, hold and don't tap.",
-      stage: (
-        <div className="grid min-h-[26vh] place-items-center rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <RtDefs />
-          <div className="text-center">
-            <RuleBadge label="Tap any CIRCLE" switchKey={0} />
-            <div className="mt-3 flex items-center justify-center gap-3">
-              <div className="opacity-40">
-                <StimulusShape
-                  stimulus={{ shape: "square", color: "green", size: "big" }}
-                  size={56}
-                />
-              </div>
-              <StimulusShape
-                stimulus={{ shape: "circle", color: "red", size: "big" }}
-                size={56}
-              />
-              <div className="opacity-40">
-                <StimulusShape
-                  stimulus={{ shape: "triangle", color: "blue", size: "big" }}
-                  size={56}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      ),
+      caption: "Balloons drift up. Pop the one that matches the rule banner.",
+      stage: <DemoSky mode="pop" />,
+      auto: 3600,
     },
     {
-      caption:
-        "The rule keeps switching mid-level — a banner flashes the new one. Re-read it every time; you can't autopilot.",
-      stage: (
-        <div className="grid min-h-[26vh] place-items-center gap-3 rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <RtDefs />
-          <RuleBadge label="Tap any GREEN" switchKey={0} />
-          <div className="text-xs font-semibold text-slate-400">↓ a few trials later ↓</div>
-          <RuleBadge label="Tap any TRIANGLE" switchKey={1} />
-        </div>
-      ),
+      caption: "Watch the banner — the rule flips as you play. Re-check it!",
+      stage: <DemoSky mode="switch" />,
+      auto: 3400,
     },
     {
-      caption:
-        "Later, rules pin down two or three features at once. 'Tap the BIG RED TRIANGLE' — colour or shape alone is a trap.",
-      stage: (
-        <div className="grid min-h-[26vh] place-items-center rounded-2xl bg-white/80 p-6 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <RtDefs />
-          <div className="text-center">
-            <RuleBadge label="Tap the BIG RED TRIANGLE" switchKey={0} />
-            <div className="mt-3 flex items-center justify-center gap-3">
-              <div className="opacity-40">
-                <StimulusShape
-                  stimulus={{ shape: "triangle", color: "red", size: "small" }}
-                  size={56}
-                />
-              </div>
-              <StimulusShape
-                stimulus={{ shape: "triangle", color: "red", size: "big" }}
-                size={56}
-              />
-              <div className="opacity-40">
-                <StimulusShape
-                  stimulus={{ shape: "circle", color: "red", size: "big" }}
-                  size={56}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      ),
+      caption: "No balloon matches? Tap the cloud instead of popping.",
+      stage: <DemoSky mode="cloud" />,
+      auto: 3600,
     },
     {
-      caption:
-        "Hit = points (faster = more). Consecutive correct answers build a combo multiplier — up to x5. A wrong tap (-8) resets it.",
-      stage: (
-        <div className="grid min-h-[22vh] place-items-center rounded-2xl bg-white/80 p-4 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
-          <LevelProgress total={4} current={1} cleared={0} />
-        </div>
-      ),
+      caption: "Streaks build a combo, up to x5. Later rules add shape and size.",
+      stage: <DemoSky mode="combo" />,
     },
   ];
 
   /* ---------------- Render ---------------- */
 
-  const feedbackColor =
+  const ringClass =
     lastResult?.kind === "hit"
-      ? "ring-emerald-300"
+      ? "ring-emerald-400/80"
       : lastResult?.kind === "nogo-correct"
-      ? "ring-emerald-200"
+      ? "ring-emerald-300/80"
       : lastResult?.kind === "wrong"
-      ? "ring-rose-300"
+      ? "ring-rose-400/80"
       : lastResult?.kind === "miss"
-      ? "ring-amber-300"
-      : "ring-slate-200 dark:ring-slate-800";
+      ? "ring-amber-300/80"
+      : "ring-sky-200/80 dark:ring-indigo-900";
 
   const mult = comboMultiplier(combo);
+  const trialKey = `${levelIdx}-${trialIdx}`;
 
   return (
     <GameShell game={game} compact={phase === "playing" || phase === "levelDone"}>
       {phase === "intro" && (
         <Instructions game={game} onStart={begin}>
-          Four reaction levels in one 3-minute session. Tap the option that
-          matches the rule, or hold when none do — but the rule keeps
-          switching, and later it pins down two or three features at once
-          ("the big red triangle"). Fast, clean streaks build a combo
-          multiplier.
+          Four skies in one 3-minute session. Balloons drift up, each carrying
+          a shape — pop the one matching the rule banner, or tap the
+          None&nbsp;match cloud when no balloon fits. Level 1 is a single fixed
+          colour; by level 4 the rule pins colour, shape AND size while the
+          balloons fly faster. Clean streaks build a combo multiplier up to x5.
         </Instructions>
       )}
 
@@ -669,6 +719,7 @@ export default function ReactionTime() {
 
       {(phase === "playing" || phase === "levelDone") && (
         <div className="space-y-3">
+          <BalloonDefs />
           <GameHUD
             levelTotal={LEVELS.length}
             levelCurrent={levelIdx + 1}
@@ -695,10 +746,7 @@ export default function ReactionTime() {
           />
 
           <div data-testid="rule">
-            <RuleBadge
-              label={rule ? ruleLabel(rule) : ""}
-              switchKey={ruleSwitchKey}
-            />
+            <RuleBanner spec={rule} switchKey={ruleSwitchKey} />
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -707,7 +755,7 @@ export default function ReactionTime() {
               {currentLevel.trialCount}
             </span>
             <span data-testid="progress">
-              {levelCorrect} correct · trial{" "}
+              {levelCorrect} correct · launch{" "}
               {Math.min(trialIdx + 1, currentLevel.trialCount)} /{" "}
               {currentLevel.trialCount}
             </span>
@@ -721,70 +769,18 @@ export default function ReactionTime() {
               nextLabel={LEVELS[lastCleared]?.name}
             />
           ) : (
-            <div
-              data-testid="stage"
-              className={
-                "no-select relative grid min-h-[54vh] w-full place-items-center overflow-hidden rounded-3xl bg-slate-100 px-4 py-6 ring-1 transition-colors dark:bg-slate-900 " +
-                feedbackColor
-              }
-            >
-              <RtDefs />
-              <div className="flex w-full max-w-md flex-col items-center gap-5">
-                <CountdownBar
-                  durationMs={trial?.windowMs ?? 0}
-                  trialKey={`${levelIdx}-${trialIdx}`}
-                  active={!!trial}
-                />
-                <div className="relative flex min-h-[150px] w-full items-center justify-center">
-                  {trial && (
-                    <div
-                      key={`row-${levelIdx}-${trialIdx}`}
-                      className="grid w-full grid-cols-3 items-center justify-items-center gap-3"
-                    >
-                      {trial.options.map((opt, idx) => (
-                        <motion.button
-                          key={`opt-${levelIdx}-${trialIdx}-${idx}`}
-                          type="button"
-                          initial={{ opacity: 0, scale: 0.7, y: 12 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          transition={{
-                            delay: idx * 0.05,
-                            type: "spring",
-                            stiffness: 440,
-                            damping: 24,
-                          }}
-                          whileTap={{ scale: 0.93 }}
-                          onClick={() => handleTap(idx as 0 | 1 | 2)}
-                          aria-label={`Option ${idx + 1}: ${opt.size} ${opt.color} ${opt.shape}`}
-                          data-testid="stimulus"
-                          data-option-idx={idx}
-                          data-is-target={trial.targetIdx === idx ? 1 : 0}
-                          data-shape={opt.shape}
-                          data-color={opt.color}
-                          data-size={opt.size}
-                          className="grid h-[110px] w-[110px] place-items-center rounded-2xl bg-white shadow-soft ring-1 ring-slate-200 transition-colors hover:ring-brand-300 dark:bg-slate-800 dark:ring-slate-700"
-                        >
-                          <StimulusShape stimulus={opt} size={96} />
-                        </motion.button>
-                      ))}
-                    </div>
-                  )}
-                  <AnimatePresence>
-                    {!trial && lastResult && (
-                      <motion.div
-                        key={`fb-${lastResult.kind}-${trialIdx}`}
-                        initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute flex flex-col items-center gap-1.5"
-                      >
-                        <FeedbackPanel result={lastResult} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
+            <>
+              <SkyScene
+                trial={trial}
+                trialKey={trialKey}
+                pings={pings}
+                bursts={bursts}
+                ringClass={ringClass}
+                lastResult={lastResult}
+                onTapBalloon={handleTapBalloon}
+              />
+              <CloudButton onPress={handleNoneMatch} pulseKey={cloudPulse} />
+            </>
           )}
         </div>
       )}
@@ -795,111 +791,992 @@ export default function ReactionTime() {
           score={finalScore}
           isBest={isBest}
           onPlayAgain={begin}
-          detail={`${clearedRef.current} / ${LEVELS.length} levels · ${totalHits} hits · best combo x${comboMultiplier(bestCombo)} · ${falseAlarms} false alarm${falseAlarms === 1 ? "" : "s"}`}
+          detail={`${clearedRef.current} / ${LEVELS.length} levels · ${totalHits} pops · best combo x${comboMultiplier(bestCombo)} · ${falseAlarms} wrong tap${falseAlarms === 1 ? "" : "s"}`}
         />
       )}
     </GameShell>
   );
 }
 
-/* ---------------- Rule badge ---------------- */
+/* ---------------- Colours & shared defs ---------------- */
 
-function RuleBadge({
-  label,
+const COLOR_FILL: Record<Color, string> = {
+  green: "#10b981",
+  red: "#ef4444",
+  yellow: "#eab308",
+  blue: "#3b82f6",
+};
+const COLOR_LIGHT: Record<Color, string> = {
+  green: "#a7f3d0",
+  red: "#fecaca",
+  yellow: "#fef08a",
+  blue: "#bfdbfe",
+};
+const COLOR_DEEP: Record<Color, string> = {
+  green: "#047857",
+  red: "#b91c1c",
+  yellow: "#a16207",
+  blue: "#1d4ed8",
+};
+
+type BalloonColor = Color | "any";
+
+function strokeFor(color: BalloonColor): string {
+  return color === "any" ? "#64748b" : COLOR_DEEP[color];
+}
+
+/** Document-wide gradients for balloon bodies. Rendered once per phase — the
+ *  playing view and each tutorial stage mount their own copy (never both). */
+function BalloonDefs() {
+  return (
+    <svg width="0" height="0" className="absolute" aria-hidden focusable="false">
+      <defs>
+        {(Object.keys(COLOR_FILL) as Color[]).map((c) => (
+          <radialGradient key={c} id={`bal-${c}`} cx="0.34" cy="0.28" r="1.05">
+            <stop offset="0%" stopColor={COLOR_LIGHT[c]} />
+            <stop offset="55%" stopColor={COLOR_FILL[c]} />
+            <stop offset="100%" stopColor={COLOR_DEEP[c]} />
+          </radialGradient>
+        ))}
+        <radialGradient id="bal-any" cx="0.34" cy="0.28" r="1.05">
+          <stop offset="0%" stopColor="#f1f5f9" />
+          <stop offset="55%" stopColor="#cbd5e1" />
+          <stop offset="100%" stopColor="#64748b" />
+        </radialGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/* ---------------- Balloon art ---------------- */
+
+// Balloon-local space: body centred on (0,0), knot at the bottom tip, wavy
+// string trailing below. `s` is roughly the body radius.
+function balloonBodyPath(s: number): string {
+  return (
+    `M 0 ${1.2 * s} ` +
+    `C ${-0.32 * s} ${0.92 * s} ${-1.0 * s} ${0.55 * s} ${-1.0 * s} ${-0.18 * s} ` +
+    `C ${-1.0 * s} ${-1.02 * s} ${-0.55 * s} ${-1.38 * s} 0 ${-1.38 * s} ` +
+    `C ${0.55 * s} ${-1.38 * s} ${1.0 * s} ${-1.02 * s} ${1.0 * s} ${-0.18 * s} ` +
+    `C ${1.0 * s} ${0.55 * s} ${0.32 * s} ${0.92 * s} 0 ${1.2 * s} Z`
+  );
+}
+
+function Emblem({ shape, s, color }: { shape: Shape; s: number; color: BalloonColor }) {
+  const e = 0.52 * s;
+  const cy = -0.14 * s;
+  const stroke = strokeFor(color);
+  const common = {
+    fill: "#ffffff",
+    fillOpacity: 0.95,
+    stroke,
+    strokeWidth: 0.09 * s,
+  } as const;
+  if (shape === "circle") return <circle cx={0} cy={cy} r={e} {...common} />;
+  if (shape === "square")
+    return (
+      <rect
+        x={-e * 0.92}
+        y={cy - e * 0.92}
+        width={e * 1.84}
+        height={e * 1.84}
+        rx={e * 0.28}
+        {...common}
+      />
+    );
+  return (
+    <polygon
+      points={`0,${cy - e * 1.05} ${e},${cy + e * 0.8} ${-e},${cy + e * 0.8}`}
+      strokeLinejoin="round"
+      {...common}
+    />
+  );
+}
+
+function BalloonArt({
+  s,
+  color,
+  shape,
+  string = true,
+}: {
+  s: number;
+  color: BalloonColor;
+  shape?: Shape;
+  string?: boolean;
+}) {
+  const stroke = strokeFor(color);
+  return (
+    <g>
+      {string && (
+        <path
+          d={`M 0 ${1.44 * s} q ${0.55 * s} ${0.5 * s} 0 ${1.0 * s} q ${-0.55 * s} ${0.5 * s} 0 ${1.0 * s}`}
+          fill="none"
+          strokeWidth={0.09 * s}
+          strokeLinecap="round"
+          className="stroke-slate-500/70 dark:stroke-slate-300/60"
+        />
+      )}
+      {/* knot */}
+      <path
+        d={`M 0 ${1.12 * s} L ${-0.2 * s} ${1.46 * s} L ${0.2 * s} ${1.46 * s} Z`}
+        fill={stroke}
+        opacity={0.9}
+      />
+      {/* body */}
+      <path
+        d={balloonBodyPath(s)}
+        fill={`url(#bal-${color})`}
+        stroke={stroke}
+        strokeWidth={0.06 * s}
+        strokeOpacity={0.4}
+      />
+      {/* soft highlight */}
+      <ellipse
+        cx={-0.42 * s}
+        cy={-0.6 * s}
+        rx={0.24 * s}
+        ry={0.42 * s}
+        fill="#ffffff"
+        opacity={0.55}
+        transform={`rotate(-24 ${-0.42 * s} ${-0.6 * s})`}
+      />
+      <circle cx={-0.18 * s} cy={-1.0 * s} r={0.09 * s} fill="#ffffff" opacity={0.6} />
+      {shape && <Emblem shape={shape} s={s} color={color} />}
+    </g>
+  );
+}
+
+/* ---------------- Rule banner ---------------- */
+
+function MiniTargetIcon({ spec }: { spec: RuleSpec }) {
+  const s = spec.size === "small" ? 4.4 : 6.2;
+  return (
+    <svg
+      viewBox="-8.5 -10 17 22"
+      className="h-12 w-9 shrink-0 drop-shadow"
+      aria-hidden
+      focusable="false"
+    >
+      <BalloonArt
+        s={s}
+        color={spec.color ?? "any"}
+        shape={spec.shape}
+        string={false}
+      />
+    </svg>
+  );
+}
+
+function RuleBanner({
+  spec,
   switchKey,
 }: {
-  label: string;
+  spec: RuleSpec | null;
   switchKey: number;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-accent-teal px-4 py-2 text-center text-white shadow-soft">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-white/80">
-        Rule
-      </div>
-      <AnimatePresence mode="wait">
+    <div
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-400 to-pink-500 px-4 py-1.5 text-white shadow-soft"
+      style={{ perspective: 500 }}
+      aria-live="polite"
+    >
+      <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={switchKey}
-          initial={{ opacity: 0, scale: 0.85, y: 6 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 1.1, y: -6 }}
-          transition={{ type: "spring", stiffness: 380, damping: 22 }}
-          className="text-lg font-black sm:text-xl"
+          initial={{ rotateX: -92, opacity: 0 }}
+          animate={{ rotateX: 0, opacity: 1 }}
+          exit={{ rotateX: 88, opacity: 0 }}
+          transition={{ duration: 0.26, ease: "easeOut" }}
+          className="flex min-h-[3rem] items-center justify-center gap-3"
         >
-          {label || "—"}
+          {spec ? (
+            <>
+              <MiniTargetIcon spec={spec} />
+              <div className="text-left leading-tight">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+                  Pop
+                </div>
+                <div className="text-lg font-black sm:text-xl">
+                  {ruleLabel(spec)}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-lg font-black">Get ready…</div>
+          )}
         </motion.div>
       </AnimatePresence>
-      {/* a quick sheen sweeps across whenever the rule changes */}
+      {/* white flash whenever the rule flips */}
       <motion.div
-        key={`sheen-${switchKey}`}
-        initial={{ x: "-120%" }}
-        animate={{ x: "120%" }}
+        key={`flash-${switchKey}`}
+        initial={{ opacity: 0.75 }}
+        animate={{ opacity: 0 }}
         transition={{ duration: 0.55, ease: "easeOut" }}
-        className="pointer-events-none absolute inset-y-0 w-1/3 -skew-x-12 bg-white/25"
+        className="pointer-events-none absolute inset-0 bg-white"
       />
     </div>
   );
 }
 
-/* ---------------- Feedback panel ---------------- */
+/* ---------------- Sky scene ---------------- */
 
-function FeedbackPanel({ result }: { result: TrialResult }) {
+function SkyScene({
+  trial,
+  trialKey,
+  pings,
+  bursts,
+  ringClass,
+  lastResult,
+  onTapBalloon,
+}: {
+  trial: Trial | null;
+  trialKey: string;
+  pings: Ping[];
+  bursts: Burst[];
+  ringClass: string;
+  lastResult: TrialResult | null;
+  onTapBalloon: (idx: 0 | 1 | 2, e: React.PointerEvent) => void;
+}) {
+  return (
+    <div
+      data-testid="stage"
+      className={`no-select relative mx-auto w-full max-w-lg overflow-hidden rounded-3xl bg-sky-300 ring-1 shadow-soft transition-colors duration-200 dark:bg-indigo-950 ${ringClass}`}
+      style={{ aspectRatio: `${SKY.w} / ${SKY.h}` }}
+    >
+      <svg
+        viewBox={`0 0 ${SKY.w} ${SKY.h}`}
+        className="absolute inset-0 h-full w-full"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <defs>
+          <linearGradient id="skyDay" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#60b8f8" />
+            <stop offset="60%" stopColor="#a8dcff" />
+            <stop offset="100%" stopColor="#e6f7ff" />
+          </linearGradient>
+          <linearGradient id="skyNight" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#171438" />
+            <stop offset="60%" stopColor="#2b2566" />
+            <stop offset="100%" stopColor="#4c3d99" />
+          </linearGradient>
+        </defs>
+
+        {/* backdrop — day and night variants */}
+        <rect width={SKY.w} height={SKY.h} fill="url(#skyDay)" className="dark:hidden" />
+        <rect width={SKY.w} height={SKY.h} fill="url(#skyNight)" className="hidden dark:block" />
+
+        <Sun />
+        <MoonAndStars />
+
+        {/* drifting far clouds */}
+        <DriftCloud cx={20} cy={14} k={1} dur={26} dx={9} />
+        <DriftCloud cx={76} cy={26} k={0.7} dur={34} dx={-8} />
+        <DriftCloud cx={48} cy={48} k={0.55} dur={30} dx={7} />
+
+        {/* rolling hills far below — the balloons' launch field */}
+        <path
+          d={`M 0 ${SKY.h} L 0 ${SKY.h - 7} Q 25 ${SKY.h - 14} 52 ${SKY.h - 7} Q 78 ${SKY.h - 1} 100 ${SKY.h - 9} L 100 ${SKY.h} Z`}
+          className="fill-emerald-300 dark:fill-indigo-900"
+        />
+        <path
+          d={`M 0 ${SKY.h} L 0 ${SKY.h - 3.5} Q 30 ${SKY.h - 9} 60 ${SKY.h - 3} Q 82 ${SKY.h + 1} 100 ${SKY.h - 4} L 100 ${SKY.h} Z`}
+          className="fill-emerald-400 dark:fill-indigo-800"
+        />
+
+        {/* balloons */}
+        <AnimatePresence>
+          {trial &&
+            trial.balloons.map((b, i) => (
+              <SceneBalloon
+                key={`b-${trialKey}-${i}`}
+                b={b}
+                idx={i as 0 | 1 | 2}
+                windowMs={trial.windowMs}
+                isTarget={trial.targetIdx === i}
+                onTap={onTapBalloon}
+              />
+            ))}
+        </AnimatePresence>
+
+        {/* pop bursts */}
+        <g pointerEvents="none">
+          {bursts.map((bu) => (
+            <BurstFx key={bu.id} burst={bu} />
+          ))}
+        </g>
+
+        {/* floating score pings */}
+        <g pointerEvents="none">
+          {pings.map((p) => (
+            <PingFx key={p.id} ping={p} />
+          ))}
+        </g>
+      </svg>
+
+      {/* per-launch countdown bar */}
+      <div className="absolute inset-x-3 top-2 h-1 overflow-hidden rounded-full bg-white/40 dark:bg-white/10">
+        {trial && (
+          <motion.div
+            key={trialKey}
+            className="h-full origin-left rounded-full bg-white/90 dark:bg-indigo-300"
+            initial={{ scaleX: 1 }}
+            animate={{ scaleX: 0 }}
+            transition={{ duration: trial.windowMs / 1000, ease: "linear" }}
+          />
+        )}
+      </div>
+
+      {/* between-launch feedback chip (never blocks input) */}
+      <AnimatePresence>
+        {lastResult && (
+          <motion.div
+            key={`fb-${lastResult.kind}-${lastResult.pts}-${lastResult.ms ?? 0}`}
+            initial={{ opacity: 0, y: 8, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+          >
+            <FeedbackChip result={lastResult} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function FeedbackChip({ result }: { result: TrialResult }) {
+  let text: string;
+  let cls: string;
   if (result.kind === "hit") {
     const ms = Math.round(result.ms ?? 0);
-    return (
-      <>
-        <div className="flex items-baseline gap-2 text-emerald-600 dark:text-emerald-300">
-          <span className="text-2xl font-black sm:text-3xl">{ms} ms</span>
-          <span className="text-sm font-bold">
-            +{result.pts}
-            {result.mult > 1 && (
-              <span className="text-amber-600 dark:text-amber-300">
-                {" "}
-                (x{result.mult})
-              </span>
-            )}
-          </span>
-        </div>
-        <ReactionGauge ms={ms} />
-      </>
-    );
-  }
-  if (result.kind === "nogo-correct") {
-    return (
-      <div className="text-xl font-bold text-emerald-600 dark:text-emerald-300 sm:text-2xl">
-        +{result.pts} · held
-      </div>
-    );
-  }
-  if (result.kind === "wrong") {
-    return (
-      <div className="text-xl font-bold text-rose-600 dark:text-rose-300 sm:text-2xl">
-        {result.pts} · wrong — combo lost
-      </div>
-    );
+    text = `${ms} ms · +${result.pts}${result.mult > 1 ? ` (x${result.mult})` : ""}`;
+    cls = "bg-emerald-500/95 text-white";
+  } else if (result.kind === "nogo-correct") {
+    text = `+${result.pts} · clear sky`;
+    cls = "bg-emerald-500/95 text-white";
+  } else if (result.kind === "wrong") {
+    text = `${result.pts} · wrong — combo lost`;
+    cls = "bg-rose-500/95 text-white";
+  } else {
+    text = "flew away";
+    cls = "bg-amber-500/95 text-white";
   }
   return (
-    <div className="text-xl font-bold text-amber-600 dark:text-amber-300 sm:text-2xl">
-      missed
+    <span className={`rounded-full px-3 py-1 text-xs font-black shadow-soft ${cls}`}>
+      {text}
+    </span>
+  );
+}
+
+/* ---------------- Scene balloon ---------------- */
+
+function SceneBalloon({
+  b,
+  idx,
+  windowMs,
+  isTarget,
+  onTap,
+}: {
+  b: BalloonSpec;
+  idx: 0 | 1 | 2;
+  windowMs: number;
+  isTarget: boolean;
+  onTap: (idx: 0 | 1 | 2, e: React.PointerEvent) => void;
+}) {
+  const st = b.stimulus;
+  const s = st.size === "big" ? BIG_S : SMALL_S;
+  return (
+    <g transform={`translate(${b.x} ${b.spawnY})`}>
+      <motion.g
+        initial={{ y: 0, opacity: 0, scale: 0.4 }}
+        animate={{ y: b.driftTo - b.spawnY, opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.16 } }}
+        transition={{
+          y: { duration: windowMs / 1000 + 0.4, ease: "linear" },
+          opacity: { duration: 0.18 },
+          scale: { type: "spring", stiffness: 340, damping: 20 },
+        }}
+      >
+        {/* idle bob — a gentle pendulum sway around the balloon's centre */}
+        <motion.g
+          animate={{ rotate: [-2.5, 2.5, -2.5], x: [-1, 1, -1] }}
+          transition={{
+            duration: b.bobDur,
+            delay: b.bobDelay,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          <g
+            data-testid="stimulus"
+            data-option-idx={idx}
+            data-is-target={isTarget ? 1 : 0}
+            data-shape={st.shape}
+            data-color={st.color}
+            data-size={st.size}
+            aria-label={`${st.size} ${st.color} ${st.shape} balloon`}
+            style={{ cursor: "pointer" }}
+            onPointerDown={(e) => onTap(idx, e)}
+          >
+            {/* generous invisible hit target (≥44px at 320px width) */}
+            <circle r={s * 1.95} fill="transparent" />
+            <BalloonArt s={s} color={st.color} shape={st.shape} />
+          </g>
+        </motion.g>
+      </motion.g>
+    </g>
+  );
+}
+
+/* ---------------- Pop burst ---------------- */
+
+function sliverPath(k: number): string {
+  return `M 0 0 Q ${0.55 * k} ${-1.1 * k} 0 ${-2.3 * k} Q ${-0.55 * k} ${-1.1 * k} 0 0 Z`;
+}
+
+function BurstFx({ burst }: { burst: Burst }) {
+  const { x, y, color, s, id } = burst;
+  const n = 7;
+  const frags = Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 + ((id % 5) * Math.PI) / 7;
+    const dist = s * (1.1 + ((id + i) % 3) * 0.35);
+    return {
+      dx: Math.cos(a) * dist,
+      dy: Math.sin(a) * dist,
+      rot: ((a * 180) / Math.PI + 90) % 360,
+      spin: 70 + ((id + i) % 4) * 40,
+    };
+  });
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {/* white pop flash */}
+      <motion.circle
+        r={s * 0.7}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={0.9}
+        initial={{ scale: 0.4, opacity: 0.95 }}
+        animate={{ scale: 2.1, opacity: 0 }}
+        transition={{ duration: 0.42, ease: "easeOut" }}
+      />
+      {frags.map((f, i) => (
+        <motion.path
+          key={i}
+          d={sliverPath(s * 0.26)}
+          fill={COLOR_FILL[color]}
+          stroke={COLOR_DEEP[color]}
+          strokeWidth={0.12}
+          initial={{ x: 0, y: 0, rotate: f.rot, scale: 1, opacity: 1 }}
+          animate={{
+            x: f.dx,
+            y: f.dy + s * 0.4,
+            rotate: f.rot + f.spin,
+            scale: 0.55,
+            opacity: 0,
+          }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        />
+      ))}
+    </g>
+  );
+}
+
+/* ---------------- Score ping ---------------- */
+
+function PingFx({ ping }: { ping: Ping }) {
+  const bg =
+    ping.tone === "ok" ? "#10b981" : ping.tone === "bad" ? "#f43f5e" : "#f59e0b";
+  const edge =
+    ping.tone === "ok" ? "#047857" : ping.tone === "bad" ? "#be123c" : "#b45309";
+  const w = 7 + ping.text.length * 3.3;
+  const h = 8.6;
+  return (
+    <g transform={`translate(${ping.x} ${ping.y})`}>
+      <motion.g
+        initial={{ y: 0, scale: 0.5, opacity: 0 }}
+        animate={{ y: [0, -3, -10], scale: [0.5, 1.14, 1], opacity: [0, 1, 0] }}
+        transition={{ duration: 0.9, times: [0, 0.2, 1], ease: "easeOut" }}
+      >
+        <rect
+          x={-w / 2}
+          y={-h / 2}
+          width={w}
+          height={h}
+          rx={h / 2}
+          fill={bg}
+          stroke={edge}
+          strokeWidth={0.45}
+        />
+        <text
+          x={0}
+          y={0.3}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={4.8}
+          fontWeight={900}
+          fill="#ffffff"
+        >
+          {ping.text}
+        </text>
+      </motion.g>
+    </g>
+  );
+}
+
+/* ---------------- Sky decorations ---------------- */
+
+function Sun() {
+  return (
+    <g className="dark:hidden" pointerEvents="none">
+      <motion.g
+        animate={{ rotate: 360 }}
+        transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
+        style={{ transformOrigin: "88px 10px" }}
+      >
+        {Array.from({ length: 8 }, (_, i) => (
+          <rect
+            key={i}
+            x={87.4}
+            y={-1}
+            width={1.2}
+            height={5}
+            rx={0.6}
+            fill="#fde68a"
+            transform={`rotate(${i * 45} 88 10)`}
+          />
+        ))}
+      </motion.g>
+      <circle cx={88} cy={10} r={6.5} fill="#fcd34d" />
+      <circle cx={86.5} cy={8.5} r={2.2} fill="#fef3c7" opacity={0.8} />
+    </g>
+  );
+}
+
+function MoonAndStars() {
+  const stars = [
+    { x: 12, y: 10, r: 0.7, d: 0 },
+    { x: 30, y: 20, r: 0.5, d: 0.7 },
+    { x: 55, y: 8, r: 0.6, d: 1.3 },
+    { x: 70, y: 18, r: 0.45, d: 0.4 },
+    { x: 92, y: 30, r: 0.55, d: 1.9 },
+    { x: 44, y: 30, r: 0.4, d: 1.1 },
+  ];
+  return (
+    <g className="hidden dark:block" pointerEvents="none">
+      <circle cx={88} cy={10} r={6} fill="#fef9c3" />
+      <circle cx={85.6} cy={8.8} r={5} className="fill-[#2b2566]" />
+      {stars.map((st, i) => (
+        <motion.circle
+          key={i}
+          cx={st.x}
+          cy={st.y}
+          r={st.r}
+          fill="#e0e7ff"
+          animate={{ opacity: [0.25, 0.95, 0.25] }}
+          transition={{
+            duration: 2.6,
+            delay: st.d,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+    </g>
+  );
+}
+
+function DriftCloud({
+  cx,
+  cy,
+  k,
+  dur,
+  dx,
+}: {
+  cx: number;
+  cy: number;
+  k: number;
+  dur: number;
+  dx: number;
+}) {
+  return (
+    <motion.g
+      className="fill-white/80 dark:fill-white/10"
+      animate={{ x: [0, dx, 0] }}
+      transition={{ duration: dur, repeat: Infinity, ease: "easeInOut" }}
+      pointerEvents="none"
+    >
+      <ellipse cx={cx} cy={cy} rx={9 * k} ry={2.8 * k} />
+      <circle cx={cx - 4 * k} cy={cy - 1.4 * k} r={2.6 * k} />
+      <circle cx={cx + 1.5 * k} cy={cy - 2.2 * k} r={3.2 * k} />
+      <circle cx={cx + 5.5 * k} cy={cy - 1 * k} r={2.2 * k} />
+    </motion.g>
+  );
+}
+
+/* ---------------- "None match" cloud button ---------------- */
+
+function CloudButton({
+  onPress,
+  pulseKey,
+}: {
+  onPress: () => void;
+  pulseKey: number;
+}) {
+  return (
+    <div className="flex justify-center">
+      <motion.button
+        type="button"
+        key={pulseKey}
+        onPointerDown={onPress}
+        whileTap={{ scale: 0.93 }}
+        animate={pulseKey > 0 ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+        transition={{ duration: 0.3 }}
+        data-testid="nomatch"
+        aria-label="No balloon matches"
+        className="relative h-16 w-full max-w-xs select-none"
+      >
+        <svg
+          viewBox="0 0 220 64"
+          className="absolute inset-0 h-full w-full drop-shadow-md"
+          preserveAspectRatio="none"
+          aria-hidden
+          focusable="false"
+        >
+          <g className="fill-white dark:fill-slate-700">
+            <circle cx={46} cy={38} r={20} />
+            <circle cx={82} cy={27} r={24} />
+            <circle cx={126} cy={25} r={26} />
+            <circle cx={168} cy={36} r={20} />
+            <rect x={30} y={32} width={158} height={26} rx={13} />
+          </g>
+          <g className="fill-sky-100 dark:fill-slate-600">
+            <circle cx={70} cy={50} r={7} />
+            <circle cx={148} cy={51} r={8} />
+          </g>
+        </svg>
+        <span className="relative z-10 text-base font-extrabold text-slate-700 dark:text-slate-100">
+          None match
+        </span>
+      </motion.button>
     </div>
   );
 }
 
-/** Horizontal meter: a fast reaction fills it green, a slow one barely moves. */
-function ReactionGauge({ ms }: { ms: number }) {
-  const fill = Math.max(0, Math.min(1, (900 - ms) / 750));
-  const color =
-    fill > 0.66 ? "bg-emerald-500" : fill > 0.33 ? "bg-amber-500" : "bg-rose-500";
+/* ---------------- Tutorial demos ---------------- */
+
+const DEMO_T = 3.4; // seconds per demo loop
+
+function DemoFrame({
+  rule,
+  switchKey = 0,
+  children,
+  overlay,
+}: {
+  rule: RuleSpec;
+  switchKey?: number;
+  children: React.ReactNode;
+  overlay?: React.ReactNode;
+}) {
   return (
-    <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-      <motion.div
-        className={"h-full rounded-full " + color}
-        initial={{ width: 0 }}
-        animate={{ width: `${fill * 100}%` }}
-        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      />
+    <div className="mx-auto flex w-full max-w-sm flex-col gap-2">
+      <BalloonDefs />
+      <RuleBanner spec={rule} switchKey={switchKey} />
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-sky-400 via-sky-200 to-sky-50 ring-1 ring-sky-200/80 dark:from-indigo-950 dark:via-indigo-900 dark:to-indigo-800 dark:ring-indigo-900">
+        <svg viewBox="0 0 100 58" className="block h-auto w-full">
+          <DriftCloud cx={18} cy={9} k={0.6} dur={22} dx={6} />
+          <DriftCloud cx={80} cy={14} k={0.45} dur={28} dx={-5} />
+          {children}
+        </svg>
+        {overlay}
+      </div>
     </div>
   );
 }
+
+/** A statically-placed balloon that idles with the same bob as gameplay. */
+function DemoBalloon({
+  x,
+  y,
+  s,
+  color,
+  shape,
+  delay = 0,
+}: {
+  x: number;
+  y: number;
+  s: number;
+  color: Color;
+  shape: Shape;
+  delay?: number;
+}) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <motion.g
+        animate={{ rotate: [-2.5, 2.5, -2.5], x: [-1, 1, -1], y: [0, -1.2, 0] }}
+        transition={{ duration: 2.6, delay, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <BalloonArt s={s} color={color} shape={shape} />
+      </motion.g>
+    </g>
+  );
+}
+
+/** Ghost finger that loops toward a target, "taps", then retreats. */
+function GhostFinger({
+  from,
+  to,
+}: {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}) {
+  return (
+    <motion.g
+      initial={false}
+      animate={{
+        x: [from.x, to.x, to.x, to.x, from.x],
+        y: [from.y, to.y, to.y, to.y, from.y],
+        scale: [1, 1, 0.75, 1, 1],
+        opacity: [0, 0.9, 0.9, 0, 0],
+      }}
+      transition={{
+        duration: DEMO_T,
+        times: [0, 0.32, 0.42, 0.6, 1],
+        repeat: Infinity,
+        ease: "easeInOut",
+      }}
+      pointerEvents="none"
+    >
+      <circle r={4.2} fill="#ffffff" opacity={0.35} />
+      <circle r={2.6} fill="#ffffff" opacity={0.9} />
+      <circle r={2.6} fill="none" stroke="#0f172a" strokeOpacity={0.25} strokeWidth={0.5} />
+    </motion.g>
+  );
+}
+
+/** The pop step: a red balloon bursts on loop under a ghost finger. */
+function DemoPop() {
+  const n = 7;
+  const frags = Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    return { dx: Math.cos(a) * 11, dy: Math.sin(a) * 11, rot: (a * 180) / Math.PI + 90 };
+  });
+  return (
+    <DemoFrame rule={{ color: "red" }}>
+      <DemoBalloon x={20} y={28} s={7} color="blue" shape="circle" delay={0.3} />
+      <DemoBalloon x={81} y={24} s={7} color="yellow" shape="square" delay={0.8} />
+      {/* the target — pops mid-loop, then respawns */}
+      <g transform="translate(50 27)">
+        <motion.g
+          animate={{ scale: [1, 1, 1, 0, 0, 1], opacity: [1, 1, 1, 0, 0, 1] }}
+          transition={{
+            duration: DEMO_T,
+            times: [0, 0.4, 0.42, 0.45, 0.93, 1],
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        >
+          <motion.g
+            animate={{ rotate: [-2.5, 2.5, -2.5] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <BalloonArt s={7.6} color="red" shape="triangle" />
+          </motion.g>
+        </motion.g>
+        {frags.map((f, i) => (
+          <motion.path
+            key={i}
+            d={sliverPath(1.9)}
+            fill={COLOR_FILL.red}
+            animate={{
+              x: [0, 0, f.dx, f.dx],
+              y: [0, 0, f.dy + 2, f.dy + 2],
+              rotate: [f.rot, f.rot, f.rot + 90, f.rot + 90],
+              opacity: [0, 0, 1, 0],
+              scale: [1, 1, 0.6, 0.5],
+            }}
+            transition={{
+              duration: DEMO_T,
+              times: [0, 0.42, 0.58, 0.7],
+              repeat: Infinity,
+              ease: "easeOut",
+            }}
+          />
+        ))}
+        {/* +N ping */}
+        <motion.g
+          animate={{ y: [0, 0, -8, -12], opacity: [0, 0, 1, 0] }}
+          transition={{
+            duration: DEMO_T,
+            times: [0, 0.44, 0.62, 0.8],
+            repeat: Infinity,
+            ease: "easeOut",
+          }}
+        >
+          <rect x={-8} y={-12} width={16} height={8} rx={4} fill="#10b981" />
+          <text
+            x={0}
+            y={-7.7}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={4.6}
+            fontWeight={900}
+            fill="#ffffff"
+          >
+            +24
+          </text>
+        </motion.g>
+      </g>
+      <GhostFinger from={{ x: 68, y: 54 }} to={{ x: 51, y: 30 }} />
+    </DemoFrame>
+  );
+}
+
+/** The switch step: the real banner flips between two rules on a loop. */
+function DemoSwitch() {
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setK((v) => v + 1), 1600);
+    return () => window.clearInterval(id);
+  }, []);
+  const specs: RuleSpec[] = [{ color: "green" }, { shape: "triangle" }];
+  const spec = specs[k % 2];
+  const match = spec.color === "green";
+  return (
+    <DemoFrame rule={spec} switchKey={k}>
+      <DemoBalloon x={26} y={28} s={7} color="green" shape="square" delay={0.2} />
+      <DemoBalloon x={62} y={24} s={7} color="red" shape="triangle" delay={0.6} />
+      {/* arrow hinting which balloon the current rule points at */}
+      <motion.path
+        d="M 0 0 L 3.2 -5 L -3.2 -5 Z"
+        fill="#ffffff"
+        stroke="#0f172a"
+        strokeOpacity={0.2}
+        strokeWidth={0.4}
+        animate={{ x: match ? 26 : 62, y: [46, 43, 46] }}
+        transition={{
+          x: { duration: 0.4, ease: "easeOut" },
+          y: { duration: 1.1, repeat: Infinity, ease: "easeInOut" },
+        }}
+      />
+    </DemoFrame>
+  );
+}
+
+/** The cloud step: nothing matches, so the finger taps the cloud button. */
+function DemoCloud() {
+  return (
+    <DemoFrame
+      rule={{ color: "red" }}
+      overlay={
+        <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center">
+          <motion.div
+            animate={{ scale: [1, 1, 1.1, 1, 1] }}
+            transition={{
+              duration: DEMO_T,
+              times: [0, 0.4, 0.48, 0.56, 1],
+              repeat: Infinity,
+            }}
+            className="relative h-12 w-40"
+          >
+            <svg
+              viewBox="0 0 220 64"
+              className="absolute inset-0 h-full w-full drop-shadow"
+              preserveAspectRatio="none"
+              aria-hidden
+            >
+              <g className="fill-white dark:fill-slate-700">
+                <circle cx={46} cy={38} r={20} />
+                <circle cx={82} cy={27} r={24} />
+                <circle cx={126} cy={25} r={26} />
+                <circle cx={168} cy={36} r={20} />
+                <rect x={30} y={32} width={158} height={26} rx={13} />
+              </g>
+            </svg>
+            <span className="absolute inset-0 z-10 grid place-items-center text-sm font-extrabold text-slate-700 dark:text-slate-100">
+              None match
+            </span>
+          </motion.div>
+        </div>
+      }
+    >
+      <DemoBalloon x={20} y={24} s={6.6} color="blue" shape="circle" delay={0.1} />
+      <DemoBalloon x={50} y={20} s={6.6} color="green" shape="triangle" delay={0.5} />
+      <DemoBalloon x={80} y={25} s={6.6} color="yellow" shape="square" delay={0.9} />
+      {/* +N ping over the cloud area */}
+      <motion.g
+        transform="translate(50 46)"
+        animate={{ y: [0, 0, -7, -10], opacity: [0, 0, 1, 0] }}
+        transition={{
+          duration: DEMO_T,
+          times: [0, 0.48, 0.66, 0.84],
+          repeat: Infinity,
+          ease: "easeOut",
+        }}
+      >
+        <rect x={-7} y={-4} width={14} height={8} rx={4} fill="#10b981" />
+        <text
+          x={0}
+          y={0.3}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={4.6}
+          fontWeight={900}
+          fill="#ffffff"
+        >
+          +8
+        </text>
+      </motion.g>
+      <GhostFinger from={{ x: 78, y: 40 }} to={{ x: 50, y: 52 }} />
+    </DemoFrame>
+  );
+}
+
+/** The final step: previews conjunction rules (size matters) and the combo. */
+function DemoCombo() {
+  return (
+    <DemoFrame
+      rule={{ color: "red", shape: "triangle", size: "big" }}
+      overlay={
+        <div className="pointer-events-none absolute right-2 top-2">
+          <motion.span
+            animate={{ scale: [1, 1.12, 1] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:ring-amber-800"
+          >
+            <FlameIcon /> x5 · 12
+          </motion.span>
+        </div>
+      }
+    >
+      {/* near-misses: right colour+shape but small; big+red but wrong shape */}
+      <DemoBalloon x={22} y={30} s={5.2} color="red" shape="triangle" delay={0.2} />
+      <DemoBalloon x={52} y={24} s={7.8} color="red" shape="triangle" delay={0.6} />
+      <DemoBalloon x={82} y={29} s={7.8} color="red" shape="circle" delay={1.0} />
+      {/* halo around the true match */}
+      <motion.circle
+        cx={52}
+        cy={22}
+        r={12}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={0.8}
+        strokeDasharray="2.4 1.8"
+        animate={{ opacity: [0.25, 0.9, 0.25], scale: [0.96, 1.04, 0.96] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "52px 22px" }}
+      />
+    </DemoFrame>
+  );
+}
+
+function DemoSky({ mode }: { mode: "pop" | "switch" | "cloud" | "combo" }) {
+  if (mode === "pop") return <DemoPop />;
+  if (mode === "switch") return <DemoSwitch />;
+  if (mode === "cloud") return <DemoCloud />;
+  return <DemoCombo />;
+}
+
+/* ---------------- Icons ---------------- */
 
 function FlameIcon() {
   return (
@@ -911,141 +1788,3 @@ function FlameIcon() {
     </svg>
   );
 }
-
-/* ---------------- Stimulus shape ---------------- */
-
-const COLOR_FILL: Record<Color, string> = {
-  green: "#10b981",
-  red: "#ef4444",
-  yellow: "#eab308",
-  blue: "#3b82f6",
-};
-const COLOR_LIGHT: Record<Color, string> = {
-  green: "#6ee7b7",
-  red: "#fca5a5",
-  yellow: "#fde047",
-  blue: "#93c5fd",
-};
-const COLOR_STROKE: Record<Color, string> = {
-  green: "#047857",
-  red: "#991b1b",
-  yellow: "#a16207",
-  blue: "#1e40af",
-};
-
-/** Shared gradient + shadow defs — referenced document-wide via url(#id). */
-function RtDefs() {
-  return (
-    <svg width="0" height="0" className="absolute" aria-hidden>
-      <defs>
-        {(Object.keys(COLOR_FILL) as Color[]).map((c) => (
-          <linearGradient
-            key={c}
-            id={`rtGrad-${c}`}
-            x1="0"
-            y1="0"
-            x2="0"
-            y2="1"
-          >
-            <stop offset="0%" stopColor={COLOR_LIGHT[c]} />
-            <stop offset="100%" stopColor={COLOR_FILL[c]} />
-          </linearGradient>
-        ))}
-        <filter id="rtShadow" x="-35%" y="-35%" width="170%" height="170%">
-          <feDropShadow
-            dx="0"
-            dy="2.5"
-            stdDeviation="2"
-            floodColor="#0f172a"
-            floodOpacity="0.3"
-          />
-        </filter>
-      </defs>
-    </svg>
-  );
-}
-
-function StimulusShape({
-  stimulus,
-  size = 96,
-}: {
-  stimulus: Stimulus;
-  size?: number;
-}) {
-  const fill = `url(#rtGrad-${stimulus.color})`;
-  const stroke = COLOR_STROKE[stimulus.color];
-  // "small" stimuli are drawn noticeably smaller within the same box
-  const scale = stimulus.size === "small" ? 0.6 : 1;
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      aria-label={`${stimulus.size} ${stimulus.color} ${stimulus.shape}`}
-    >
-      <g
-        transform={`translate(50 50) scale(${scale}) translate(-50 -50)`}
-        filter="url(#rtShadow)"
-      >
-        {stimulus.shape === "circle" && (
-          <circle
-            cx="50"
-            cy="50"
-            r="42"
-            fill={fill}
-            stroke={stroke}
-            strokeWidth="3"
-          />
-        )}
-        {stimulus.shape === "square" && (
-          <rect
-            x="10"
-            y="10"
-            width="80"
-            height="80"
-            rx="14"
-            fill={fill}
-            stroke={stroke}
-            strokeWidth="3"
-          />
-        )}
-        {stimulus.shape === "triangle" && (
-          <polygon
-            points="50,10 90,86 10,86"
-            fill={fill}
-            stroke={stroke}
-            strokeWidth="3"
-            strokeLinejoin="round"
-          />
-        )}
-      </g>
-    </svg>
-  );
-}
-
-/* ---------------- Shared countdown bar ---------------- */
-
-function CountdownBar({
-  durationMs,
-  trialKey,
-  active,
-}: {
-  durationMs: number;
-  trialKey: string;
-  active: boolean;
-}) {
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-      {active && durationMs > 0 && (
-        <motion.div
-          key={trialKey}
-          className="h-full w-full origin-left bg-brand-500"
-          initial={{ scaleX: 1 }}
-          animate={{ scaleX: 0 }}
-          transition={{ duration: durationMs / 1000, ease: "linear" }}
-        />
-      )}
-    </div>
-  );
-}
-
