@@ -351,6 +351,9 @@ export default function MathSprint() {
 
   const startLevel = useCallback(
     (idx: number) => {
+      // The session can expire during the 1.1 s levelDone pause; never let a
+      // queued level start resurrect a session that already ended.
+      if (endedRef.current) return;
       const lvl = LEVELS[idx];
       setLevelIdx(idx);
       setLevelCorrect(0);
